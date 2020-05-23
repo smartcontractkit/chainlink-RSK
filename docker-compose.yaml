@@ -1,0 +1,137 @@
+version: '3.5'
+
+x-db-env:
+  &db-login-data
+  POSTGRES_DB: chainlink_dev
+  POSTGRES_PASSWORD: chainlink
+
+services:
+  chainlink-db:
+    container_name: chainlink-db
+    environment: *db-login-data
+    image: postgres:11.6
+    ports:
+      - 5433:5432
+    volumes:
+      - chainlink-db-data:/var/lib/postgresql/data
+  ethereum-node:
+    build: ./docker/ethereum-node
+    container_name: ethereum-node
+    image: smartcontract/gethnet
+    ports:
+      - 8545:8545
+      - 8546:8546
+    volumes:
+      - geth-db-data:/gethnet/datadir/geth
+    secrets:
+      - eth_node_passw
+  rsk-node:
+    container_name: rsk-node
+    build: ./docker/rsk-node
+    ports:
+      - 4444:4444
+      - 4445:4445
+      - 30305:30305
+  chainlink-node:
+    container_name: chainlink-node
+    build: ./docker/chainlink-node
+    depends_on:
+      - chainlink-db
+      - ethereum-node
+    environment: *db-login-data
+    env_file:
+      - ./docker/chainlink-node/.env
+    links:
+      - "chainlink-db"
+      - "ethereum-node"
+    ports:
+      - 6688:6688
+    secrets:
+      - chainlink_secret
+      - chainlink_api
+      - chainlink_key
+  rsk-initiator:
+    container_name: rsk-initiator
+    build:
+      context: .
+      dockerfile: ./rsk-initiator/Dockerfile
+    env_file:
+      - ./rsk-initiator/.env
+    depends_on:
+      - rsk-node
+    links:
+      - "rsk-node"
+    ports:
+      - 30055:30055
+    volumes:
+      - ./rsk-initiator/src:/home/rsk-initiator/src
+      - ./chainlink-api-client/src:/home/chainlink-api-client/src
+      - initiator-modules:/home/rsk-initiator/node_modules
+      - chainlink-api-client-modules:/home/chainlink-api-client/node_modules
+      - shared-volume:/home/rsk-initiator/config
+  rsktx-adapter:
+    container_name: rsktx-adapter
+    build:
+      context: .
+      dockerfile: ./rsktx-adapter/Dockerfile
+    env_file:
+      - ./rsktx-adapter/.env
+    depends_on:
+      - rsk-node
+    links:
+      - "rsk-node"
+    ports:
+      - 30056:30056
+    secrets:
+      - adapter_key
+    volumes:
+      - ./rsktx-adapter/src:/home/rsktx-adapter/src
+      - ./chainlink-api-client/src:/home/chainlink-api-client/src
+      - adapter-modules:/home/rsktx-adapter/node_modules
+      - chainlink-api-client-modules:/home/chainlink-api-client/node_modules
+      - shared-volume:/home/rsktx-adapter/config
+  test-runner:
+    container_name: test-runner
+    build:
+      context: .
+      dockerfile: ./test-runner/Dockerfile
+    env_file:
+      - ./test-runner/.env
+    depends_on:
+      - rsk-node
+      - rsk-initiator
+      - rsktx-adapter
+    links:
+      - "rsk-node"
+      - "rsk-initiator"
+      - "rsktx-adapter"
+    secrets:
+      - adapter_key
+      - chainlink_api
+    volumes:
+       - ./test-runner/src:/home/test-runner/src
+       - ./chainlink-api-client/src:/home/chainlink-api-client/src
+       - runner-modules:/home/test-runner/node_modules
+       - contracts-build-directory:/home/test-runner/artifacts:z
+       - chainlink-api-client-modules:/home/chainlink-api-client/node_modules
+       - shared-volume:/home/test-runner/config:z
+secrets:
+  adapter_key:
+    file: ./rsktx-adapter/src/.adapterKey
+  chainlink_secret:
+    file: ./docker/chainlink-node/.secret
+  chainlink_api:
+    file: ./docker/chainlink-node/.api
+  chainlink_key:
+    file: ./docker/chainlink-node/keystore.json
+  eth_node_passw:
+    file: ./docker/ethereum-node/secret.txt
+volumes:
+  adapter-modules:
+  contracts-build-directory:
+  chainlink-api-client-modules:
+  chainlink-db-data:
+  runner-modules:
+  geth-db-data:
+  initiator-modules:
+  shared-volume:

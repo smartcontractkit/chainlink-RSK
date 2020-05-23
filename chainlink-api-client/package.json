@@ -1,0 +1,21 @@
+{
+	"name": "chainlink-api-client",
+	"version": "0.0.7",
+	"author": "Fernando Rubal <fernando_rubal@hotmail.com>",
+	"description": "Chainlink API Client",
+	"scripts": {
+		"dev": "npx nodemon --watch src/index.js",
+		"start": "node src/index.js"
+	},
+	"dependencies": {
+		"isomorphic-unfetch": "^3.0.0"
+	},
+	"devDependencies": {
+		"nodemon": "^2.0.3"
+	},
+	"nodemonConfig": {
+		"ignore": [
+			"./node_modules/"
+		]
+	}
+}

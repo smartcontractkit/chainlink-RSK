@@ -1,0 +1,31 @@
+{
+	"name": "test-runner",
+	"version": "0.0.5",
+	"description": "Test runner for the Chainlink-RSK integration that deploys the contracts, configures the Chainlink node and requests data to a Consumer contract",
+	"scripts": {
+		"dev": "npx nodemon --watch index.js --watch ../../chainlink-api-client/src/index.js index.js",
+		"setup:regtest": "npm run fund:rsk && npm run deploy:migrations:rsk && npm run deploy:sidetoken:rsk && npm run deploy:oracle:rsk && npm run deploy:client:rsk",
+		"start": "node index.js",
+		"test": "npx truffle test",
+		"deploy:sidetoken_v1:regtest": "npx truffle migrate --f 1 --to 2 --network regtest",
+		"deploy:oracle:regtest": "npx truffle migrate --f 3 --to 3 --network regtest",
+		"deploy:consumer:regtest": "npx truffle migrate --f 4 --to 4 --network regtest",
+		"fund:gethdev": "npx truffle exec ./scripts/fund-accounts.js --network fund_gethdev",
+		"fund:regtest": "npx truffle exec ./scripts/fund-accounts.js --network fund_regtest",
+		"mint:regtest": "npx truffle exec ./scripts/mint.js --network regtest",
+		"fund:consumer:regtest": "npx truffle exec ./scripts/fund-consumer.js --network regtest"
+	},
+	"dependencies": {
+		"@truffle/contract": "^4.2.3",
+		"@truffle/hdwallet-provider": "^1.0.34",
+		"cbor": "^5.0.2",
+		"chainlink-api-client": "file:../../chainlink-api-client",
+		"truffle": "^5.1.23",
+		"web3": "^1.2.7"
+	},
+	"devDependencies": {
+		"@openzeppelin/test-helpers": "github:OpenZeppelin/openzeppelin-test-helpers",
+		"@truffle/debug-utils": "^4.1.1",
+		"nodemon": "^2.0.3"
+	}
+}
