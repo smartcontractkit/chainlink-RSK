@@ -1,5 +1,4 @@
 const bodyParser = require('body-parser');
-const ChainlinkAPIClient = require('chainlink-api-client');
 const express = require('express');
 const fs = require('fs');
 const Web3 = require('web3');
@@ -109,7 +108,7 @@ async function fulfillRequest(req){
 
 			// TX params
 			const tx = {
-				gas: 1000000,
+				gas: 500000,
 				to: req.address,
 				data: encodedFulfill
 			};
