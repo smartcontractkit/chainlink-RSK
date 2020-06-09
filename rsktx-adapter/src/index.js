@@ -53,7 +53,7 @@ app.post("/adapter", async (req, res) => {
 			var rJson = JSON.stringify({
 				"jobRunID": req.body.id,
 				"data": {
-					"status":"finished",
+					"status": "completed",
 					"result": tx
 				},
 				"error": null
