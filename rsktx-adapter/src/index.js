@@ -23,10 +23,6 @@ const RSK_CONFIG = {
 	'url': `ws://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
 };
 
-let chainlink = new ChainlinkAPIClient({
-	basePath: process.env.CHAINLINK_BASE_URL || 'http://localhost:6688'
-});
-
 app.use(bodyParser.json());
 
 // Simple logger middleware that prints the requests received on the adapter endpoints
