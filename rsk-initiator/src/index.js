@@ -259,7 +259,19 @@ function setupNetwork(node){
 		console.log(`[INFO] - Waiting for ${node.name} node to be ready, connecting to ${node.url}`);
 		// Wrap the process in a function to be able to call it again if can't connect
 		(function tryConnect() {
-			const wsProvider = new Web3.providers.WebsocketProvider(node.url);
+			const wsOptions = {
+				clientConfig: {
+					keepAlive: true,
+					keepaliveInterval: 20000
+				},
+				reconnect: {
+					auto: true,
+					delay: 5000, // ms
+					maxAttempts: 5,
+					onTimeout: false
+				}
+			};
+			const wsProvider = new Web3.providers.WebsocketProvider(node.url, wsOptions);
 			web3.setProvider(wsProvider);
 			// Check connection with isListening()
 			web3.eth.net.isListening().then(() => {
