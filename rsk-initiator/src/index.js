@@ -178,7 +178,7 @@ function loadJson(file){
 
 /* Subscribes to the RSK node for events emitted from the given Oracle address that contains a request
    for the specified job ID */
-function newSubscription(jobId, oracleAddress){
+async function newSubscription(jobId, oracleAddress){
 	console.log(`[INFO] - Subscribing to Oracle at ${oracleAddress} for requests to job ID ${jobId}...`);
 	/* TODO: Subscriptions are not working as expected with RSK node, address field is not working as filter
 	   so it receives all events and have to manually filter through all events */
