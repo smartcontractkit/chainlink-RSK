@@ -23,6 +23,8 @@ const SUBSCRIPTIONS_FILE = '../config/subscriptions.json';
 let web3 = new Web3();
 // The Subscriptions array holds the current job/oracle pairs that needs to be watched for events
 let Subscriptions = [];
+// The Events array holds the current unique events being processed. Allows for handling repeated events.
+let Events = [];
 // The auth object holds the initiator auth credentials for triggering job runs
 let auth = {'incomingAccessKey': '', 'incomingSecret': ''};
 
@@ -142,6 +144,23 @@ async function initiatorSetup(){
 	}
 }
 
+/* Returns true if the event received has already been processed (is present in the Events array) */
+function isDuplicateEvent(event){
+	if (Events.length > 0){
+		for (let x = 0; x < Events.length; x++){
+			if (Events[x].transactionHash == event.transactionHash && Events[x].data == event.data && Events[x].topics == event.topics){
+				return true;
+			}else{
+				if ((x + 1) == Events.length){
+					return false;
+				}
+			}
+		}
+	}else{
+		return false;
+	}
+}
+
 /* Reads a json file and returns the parsed object */
 function loadJson(file){
 	return new Promise(function (resolve, reject){
@@ -162,8 +181,10 @@ function newSubscription(jobId, oracleAddress){
 	console.log(`[INFO] - Subscribing to Oracle at ${oracleAddress} for requests to job ID ${jobId}...`);
 	/* TODO: Subscriptions are not working as expected with RSK node, address field is not working as filter
 	   so it receives all events and have to manually filter through all events */
+	const currentBlock = await web3.eth.getBlockNumber();
 	let subscription = web3.eth.subscribe('logs', {
-	    address: oracleAddress
+		address: oracleAddress,
+		fromBlock: web3.utils.toHex(currentBlock)
 	}, async function(error, event){
 		if (!error)
 			// If the event comes from the given Oracle address
@@ -172,13 +193,22 @@ function newSubscription(jobId, oracleAddress){
 					// Decode the event logs
 					const logs = web3.eth.abi.decodeLog(oracleRequestAbi, event.data, event.topics);
 					const specId = web3.utils.hexToUtf8(event.topics[1]);
-					// If the request is for the specified job
-					if (jobId == specId){
+					// If the request is for the specified job and is not a duplicate event
+					if (jobId == specId && !isDuplicateEvent(event)){
 						console.log(`[INFO] - New Oracle request with ID ${logs.requestId}. Triggering job ${specId}...`);
-						// Extract the CBOR data buffer from the log, adding the required initial and final bytes for proper format
-						const encodedReq = new Buffer.from(('bf' + logs.data.slice(2) + 'ff'), 'hex');
-						// Decode the Chainlink request from the CBOR data buffer
-		    			let clReq = await cbor.decodeFirst(encodedReq);
+						// Save the event in the Events array to allow for checking duplicates
+						Events.push(event);
+						const eventPos = Events.length - 1;
+						// If there's request data present in the logs, then extract and decode it
+						let clReq;
+						if (logs.data !== null){
+							// Extract the CBOR data buffer from the log, adding the required initial and final bytes for proper format
+							const encodedReq = new Buffer.from(('bf' + logs.data.slice(2) + 'ff'), 'hex');
+							// Decode the Chainlink request from the CBOR data buffer
+							clReq = await cbor.decodeFirst(encodedReq);
+						}else{
+							clReq = {};
+						}
 		    			/* Add to the request some custom parameters destined for the RSK TX adapter:
 		    			   @address is the address of the Oracle contract that the adapter has to call
 		    			   @dataPrefix is the encoded parameters that the adapter will need to call the Oracle
@@ -208,6 +238,10 @@ function newSubscription(jobId, oracleAddress){
 						}else{
 							throw newRun.errors;
 						}
+						// Give it some time to wait for possible incoming repeated events, then remove it from array
+						setTimeout(() => {
+							Events.splice(eventPos, 1);
+						}, 20000);
 		    		}else{
 		    			console.log('[INFO] - Oracle requested for a job ID not registered on Initiator database, skipping...');
 		    		}
