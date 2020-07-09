@@ -210,10 +210,10 @@ async function newSubscription(jobId, oracleAddress){
 						}else{
 							clReq = {};
 						}
-		    			/* Add to the request some custom parameters destined for the RSK TX adapter:
-		    			   @address is the address of the Oracle contract that the adapter has to call
-		    			   @dataPrefix is the encoded parameters that the adapter will need to call the Oracle
-		    			   @functionSelector is the selector of the Oracle fulfill function */
+						/* Add to the request some custom parameters destined for the RSK TX adapter:
+						   @address is the address of the Oracle contract that the adapter has to call
+						   @dataPrefix is the encoded parameters that the adapter will need to call the Oracle
+						   @functionSelector is the selector of the Oracle fulfill function */
 						clReq.address = oracleAddress;
 						clReq.dataPrefix = web3.eth.abi.encodeParameters([
 								'bytes32', 'uint256', 'address', 'bytes4', 'uint256'
@@ -226,14 +226,14 @@ async function newSubscription(jobId, oracleAddress){
 
 						// If the auth credentials hasn't been initialized already, try to load them from the config file
 						// If the configuration file is not present, will fail
-		    			if (auth.incomingAccessKey == '' || auth.incomingSecret == ''){
-		    				const conf = await loadJson(CONFIGURATION_FILE);
-		    				auth.incomingAccessKey = conf.incomingAccessKey;
-		    				auth.incomingSecret = conf.incomingSecret;
-		    			}
-		    			
-		    			// Trigger the job run, passing auth credentials and the complete request
-		    			const newRun = await chainlink.initiateJobRun(jobId, auth.incomingAccessKey, auth.incomingSecret, clReq);
+						if (auth.incomingAccessKey == '' || auth.incomingSecret == ''){
+							const conf = await loadJson(CONFIGURATION_FILE);
+							auth.incomingAccessKey = conf.incomingAccessKey;
+							auth.incomingSecret = conf.incomingSecret;
+						}
+						
+						// Trigger the job run, passing auth credentials and the complete request
+						const newRun = await chainlink.initiateJobRun(jobId, auth.incomingAccessKey, auth.incomingSecret, clReq);
 						if (!newRun.errors){
 							console.log(`[INFO] - Initiated job run with ID ${newRun.data.attributes.id}...`);
 						}else{
@@ -243,9 +243,9 @@ async function newSubscription(jobId, oracleAddress){
 						setTimeout(() => {
 							Events.splice(eventPos, 1);
 						}, 20000);
-		    		}else{
-		    			console.log('[INFO] - Oracle requested for a job ID not registered on Initiator database, skipping...');
-		    		}
+					}else{
+						console.log('[INFO] - Oracle requested for a job ID not registered on Initiator database, skipping...');
+					}
 				}catch(e){
 					console.error(e);
 				}
