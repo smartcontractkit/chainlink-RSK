@@ -30,6 +30,7 @@ let auth = {'incomingAccessKey': '', 'incomingSecret': ''};
 
 // Setup different configurations if the project is running from inside a Docker container. If not, use defaults
 const RSK_NODE = {
+	protocol: process.env.RSK_WS_PROTOCOL || 'ws',
 	host: process.env.RSK_HOST || 'localhost',
 	port: process.env.RSK_WS_PORT || 4445,
 	url: process.env.RSK_WS_URL || '/websocket'
@@ -37,7 +38,7 @@ const RSK_NODE = {
 const RSK_CONFIG = {
 	'name': 'RSK',
 	'shortname': 'regtest',
-	'url': `ws://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
+	'url': `${RSK_NODE.protocol}://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
 };
 
 // Initialize the Chainlink API Client without credentials, the adapter will login through the access key and secret
