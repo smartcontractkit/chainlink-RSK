@@ -12,7 +12,7 @@ is included to setup the environment and test the complete data flow, which will
 This boilerplate has 7 services, each running in its own Docker container
 
 - `chainlink-node`, a Chainlink node connected to an Eth dev network, using the develop Docker image.
-- `chainlink-db`, a PostgreSQL server for the Chainlink node.
+- `postgres-server`, a PostgreSQL server for the Chainlink node, RSK Initiator and RSKTX Adapter databases.
 - `ethereum-node`, an Ethereum geth node for the Chainlink node to connect to.
 - `rsk-node`, a single RSK node configured to work on regtest network (private development network), using latest Docker image.
 - `rsk-initiator`, an external initiator connected to the RSK node that reads the event log from an Oracle contract and invokes a job run. A new
