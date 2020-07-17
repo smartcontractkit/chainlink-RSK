@@ -5,10 +5,8 @@
 set -e
 
 DB_HOST="$1"
-DEPLOY_HOST="$2"
-keyimport="$3"
-startnode="$4"
-
+keyimport="$2"
+startnode="$3"
 
 >&2 echo "Waiting for Postgres to be ready..."
 
@@ -24,6 +22,6 @@ done
 >&2 echo "Importing keystore..."
 $keyimport
 
-# set the LinkToken address received from Deployer REST API and start chainlink node
+# start chainlink node
 >&2 echo "Running node..."
-LINK_CONTRACT_ADDRESS=$HTTP_BODY exec $startnode
+exec $startnode

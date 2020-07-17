@@ -1,13 +1,17 @@
 {
 	"name": "rsktx-adapter",
-	"version": "0.0.3",
+	"version": "0.0.5",
 	"description": "External adapter for Chainlink that takes the input sent by Chainlink, and sends a transaction with that data to an address on a RSK network.",
 	"scripts": {
-		"dev": "npx nodemon --watch index.js --watch ../../chainlink-api-client/src/index.js index.js"
+		"start": "node index.js",
+		"dev": "npx nodemon --watch index.js --watch ../../chainlink-api-client/src/index.js index.js",
+		"setup": "node setup.js",
+		"remove": "node remove.js"
 	},
 	"dependencies": {
 		"chainlink-api-client": "file:../../chainlink-api-client",
 		"express": "^4.17.1",
+		"pg": "^8.3.0",
 		"web3": "^1.2.7"
 	},
 	"devDependencies": {

@@ -25,6 +25,8 @@ RUN \
 	rm -f /etc/rsk/node.conf && \
 	ln -s /etc/rsk/regtest.conf /etc/rsk/node.conf
 
+RUN mkdir -p /var/lib/rsk/database/regtest && chown rsk:rsk /var/lib/rsk/database/regtest
+
 # Supervisod CONF
 COPY ./regtest.conf /etc/rsk/regtest.conf
 COPY ./logback.xml /etc/rsk/logback.xml

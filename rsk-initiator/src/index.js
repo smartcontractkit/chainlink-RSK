@@ -1,9 +1,11 @@
 const bodyParser = require('body-parser');
 const cbor = require('cbor');
 const ChainlinkAPIClient = require('chainlink-api-client');
+const { exec } = require('child_process');
 const express = require('express');
 const fs = require('fs');
 const Web3 = require('web3');
+const db = require('./db.js');
 
 // The OracleRequest event ABI for decoding the event logs
 const oracleRequestAbi = [{"indexed":true,"name":"specId","type":"bytes32"},{"indexed":false,"name":"requester","type":"address"},{"indexed":false,"name":"requestId","type":"bytes32"},{"indexed":false,"name":"payment","type":"uint256"},{"indexed":false,"name":"callbackAddr","type":"address"},{"indexed":false,"name":"callbackFunctionId","type":"bytes4"},{"indexed":false,"name":"cancelExpiration","type":"uint256"},{"indexed":false,"name":"dataVersion","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"}];
@@ -11,22 +13,11 @@ const oracleRequestAbi = [{"indexed":true,"name":"specId","type":"bytes32"},{"in
 const app = express();
 const port = process.env.INITIATOR_PORT || 30055;
 
-/* The configuration file should hold the authentication data. In testing environment it doesn't matter if it
-   is present or not at first, because the test runner will provide one later. When working outside the testing
-   environment, the configuration file should be present or else it will fail later when it needs to trigger a
-   job run and has no authentication credentials available. */
-const CONFIGURATION_FILE = '../config/config.json';
-
-// If there aren't subscriptions, there will be provided later through the /initiator endpoint.
-const SUBSCRIPTIONS_FILE = '../config/subscriptions.json';
-
 let web3 = new Web3();
 // The Subscriptions array holds the current job/oracle pairs that needs to be watched for events
 let Subscriptions = [];
 // The Events array holds the current unique events being processed. Allows for handling repeated events.
 let Events = [];
-// The auth object holds the initiator auth credentials for triggering job runs
-let auth = {'incomingAccessKey': '', 'incomingSecret': ''};
 
 // Setup different configurations if the project is running from inside a Docker container. If not, use defaults
 const RSK_NODE = {
@@ -79,19 +70,14 @@ app.post("/initiator", async (req, res) => {
 			console.log(`[INFO] - Adding Job ${req.body.jobId} to the subscription list...`);
 			Subscriptions.push({'jobId':req.body.jobId, 'address':req.body.params.address});
 
+			// Save the new subscription to database
+			console.log(`[INFO] - Saving subscription...`);
+			await saveSubscription(req.body.jobId, req.body.params.address);
+
 			// Subscribe to RSK node for events from that Oracle corresponding to that new job id
 			newSubscription(req.body.jobId, req.body.params.address);
 
-			// Save subscriptions list to a file.
-			// TODO: Save subscriptions list to a database.
-			console.log(`[INFO] - Saving subscriptions list...`);
-			const saveSub = await writeJson(SUBSCRIPTIONS_FILE, Subscriptions);
-			if (!saveSub.error){
-				// Return 200 to Chainlink node
-				return res.sendStatus(200);
-			}else{
-				throw error;
-			}
+			return res.sendStatus(200);
 		}else{
 			return res.sendStatus(401);
 		}
@@ -106,39 +92,24 @@ app.post("/initiator", async (req, res) => {
    subscriptions file and configuration file. */
 async function initiatorSetup(){
 	try {
-		// Configures the web3 instance connected to RSK network
+		// Configure the web3 instance connected to RSK network
 		web3 = await setupNetwork(RSK_CONFIG);
 		const chainId = await web3.eth.net.getId();
 		console.log(`[INFO] - Web3 is connected to the ${RSK_CONFIG.name} node. Chain ID: ${chainId}`);
 
-		// Try to load the subscriptions file
-		let subs = await loadJson(SUBSCRIPTIONS_FILE);
-		if (!subs.error){
-			console.log('[INFO] - Loaded subscriptions from file');
-			Subscriptions = subs;
-			Subscriptions.forEach(jobSub => {
-				newSubscription(jobSub.jobId, jobSub.address);
+		// Load the subscriptions from database
+		let subs = await loadSubscriptions();
+		if (subs.length > 0){
+			console.log('[INFO] - Loaded subscriptions from database');
+			subs.forEach(sub => {
+				Subscriptions.push({
+					'jobId': sub.job,
+					'address': sub.address
+				});
+				newSubscription(sub.job, sub.address);
 			});
 		}else{
-			if (subs.error.indexOf('no such file or directory') == -1){
-				console.error(e);
-			}else{
-				console.log('[INFO] - Subscriptions file not found, will wait for Chainlink to provide the first job');
-			}
-		}
-
-		// Try to load the configuration file
-		let config = await loadJson(CONFIGURATION_FILE);
-		if (!config.error){
-			console.log('[INFO] - Loaded authentication credentials from file');
-			auth.incomingAccessKey = config.incomingAccessKey;
-			auth.incomingSecret = config.incomingSecret;
-		}else{
-			if (config.error.indexOf('no such file or directory') == -1){
-				console.error(e);
-			}else{
-				console.log('[INFO] - Configuration file not found, will wait to receive the auth info from test runner');
-			}
+			console.log('[INFO] - No subscriptions yet');
 		}
 	}catch(e){
 		console.error('[ERROR] - Initiator setup failed:' + e);
@@ -162,17 +133,33 @@ function isDuplicateEvent(event){
 	}
 }
 
-/* Reads a json file and returns the parsed object */
-function loadJson(file){
-	return new Promise(function (resolve, reject){
-		fs.readFile(file, 'utf8', (err, data) => {
-			if (!err){
-				const jsonData = JSON.parse(data);
-				resolve(jsonData);
-			}else{
-				resolve({'error': err.toString()});
-			}
-		});
+/* Reads the database and returns the Chainlink Node auth data */
+function loadCredentials(){
+	return new Promise(async function (resolve, reject){
+		const result = await db.query('SELECT * FROM auth_data');
+		if (result.rows.length > 0){
+			const auth = {
+				incomingAccessKey: result.rows[0].incoming_accesskey,
+				incomingSecret: result.rows[0].incoming_secret
+			};
+			resolve(auth);
+		}else{
+			reject('No auth data present');
+		}
+	});
+}
+
+/* Loads the subscriptions list from database */
+async function loadSubscriptions(){
+	return new Promise(async function(resolve, reject){
+		try {
+			const sql = 'SELECT * FROM subscriptions;';
+			const result = await db.query(sql);
+			resolve(result.rows);
+		}catch(e){
+			console.log(e);
+			reject(e);
+		}
 	});
 }
 
@@ -180,8 +167,6 @@ function loadJson(file){
    for the specified job ID */
 async function newSubscription(jobId, oracleAddress){
 	console.log(`[INFO] - Subscribing to Oracle at ${oracleAddress} for requests to job ID ${jobId}...`);
-	/* TODO: Subscriptions are not working as expected with RSK node, address field is not working as filter
-	   so it receives all events and have to manually filter through all events */
 	const currentBlock = await web3.eth.getBlockNumber();
 	let subscription = web3.eth.subscribe('logs', {
 		address: oracleAddress,
@@ -223,15 +208,8 @@ async function newSubscription(jobId, oracleAddress){
 						);
 						// 0x4ab0d190 is the selector for the Oracle fulfillRequest() function
 						clReq.functionSelector = '0x4ab0d190';
-
-						// If the auth credentials hasn't been initialized already, try to load them from the config file
-						// If the configuration file is not present, will fail
-						if (auth.incomingAccessKey == '' || auth.incomingSecret == ''){
-							const conf = await loadJson(CONFIGURATION_FILE);
-							auth.incomingAccessKey = conf.incomingAccessKey;
-							auth.incomingSecret = conf.incomingSecret;
-						}
-						
+						// Load auth credentials from database
+						const auth = await loadCredentials();
 						// Trigger the job run, passing auth credentials and the complete request
 						const newRun = await chainlink.initiateJobRun(jobId, auth.incomingAccessKey, auth.incomingSecret, clReq);
 						if (!newRun.errors){
@@ -250,6 +228,54 @@ async function newSubscription(jobId, oracleAddress){
 					console.error(e);
 				}
 			}
+	});
+}
+
+/* Saves a new subscription to database */
+async function saveSubscription(jobId, oracleAddress){
+	return new Promise(async function(resolve, reject){
+		try {
+			const sqlInsert = `
+				INSERT INTO subscriptions (address, job)
+				VALUES ('${oracleAddress}', '${jobId}');
+			`;
+			const result = await db.query(sqlInsert);
+			resolve(true);
+		}catch(e){
+			console.log(e);
+			reject(e);
+		}
+	});
+}
+
+/* Runs the setup script and checks if the Chainlink Node auth data is present */
+async function setupCredentials(){
+	return new Promise(async function(resolve, reject){
+		try {
+			if (process.env.DATABASE_URL) {
+				const proc = exec('npm run setup', async (error, stdout, stderr) => {
+					if (!error){
+						const result = await db.query('SELECT * FROM auth_data');
+						if (result.rows.length > 0){
+							resolve();
+						}else{
+							reject('No auth data present');
+						}
+					}else{
+						reject(error);
+					}
+				});
+				proc.stdout.on('data', (data) => {
+					process.stdout.write(data);
+				});
+			}else{
+				console.error('[ERROR] - DATABASE_URL environment variable is not set. Exiting...');
+				reject();
+			}
+		}catch(e){
+			console.error(e);
+			reject(e);
+		}
 	});
 }
 
@@ -288,21 +314,13 @@ function setupNetwork(node){
 	});
 }
 
-/* Writes a json file */
-function writeJson(file, data){
-	return new Promise(function (resolve, reject){
-		fs.writeFile(file, JSON.stringify(data), 'utf8', (err) => {
-			if (err){
-				console.error(err);
-				resolve({'error':err.toString()});
-			}else{
-				resolve({});
-			}
-		});
-	});
-}
-
-const server = app.listen(port, function() {
+const server = app.listen(port, async function() {
 	console.log(`[INFO] - RSK Initiator listening on port ${port}!`);
+	try {
+		await setupCredentials();
+	}catch(e){
+		console.log(e);
+		process.exit();
+	}
 	initiatorSetup();
 });

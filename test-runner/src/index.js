@@ -8,9 +8,9 @@ const Web3 = require('web3');
 
 const TESTER_PRIVATE_KEY = fs.readFileSync(".testerKey").toString().trim();
 const CONTRACTS_BUILD_DIRECTORY = process.env.CONTRACTS_BUILD_DIRECTORY || './build/contracts';
-const CONFIGURATION_FILE = '../config/config.json';
-const SUBSCRIPTIONS_FILE = '../config/subscriptions.json';
+const JOB_FILE = 'job.json';
 const RSK_NODE = {
+	protocol: process.env.RSK_WS_PROTOCOL || 'ws',
 	host: process.env.RSK_HOST || 'localhost',
 	port: process.env.RSK_WS_PORT || 4445,
 	url: process.env.RSK_WS_URL || '/websocket'
@@ -18,7 +18,7 @@ const RSK_NODE = {
 const RSK_CONFIG = {
 	'name': 'RSK',
 	'shortname': 'regtest',
-	'url': `ws://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
+	'url': `${RSK_NODE.protocol}://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
 };
 
 let chainlinkEmail, chainlinkPass;
@@ -102,21 +102,14 @@ function fundConsumer(network){
 async function initCore(oracleAddress){
 	return new Promise(async function (resolve, reject){
 		try {
-			const initiatorAuth = await setupInitiator();
-			const adapterAuth = await setupAdapter();
 			const newJobId = await setupJob(oracleAddress);
-			await chainlink.logout();
-
-			const conf = {
-				'incomingAccessKey': initiatorAuth.incomingAccessKey,
-				'incomingSecret': initiatorAuth.incomingSecret,
-				'incomingToken': adapterAuth.incomingToken,
+			const newJob = {
 				'jobId': newJobId
 			};
-
-			fs.writeFile(CONFIGURATION_FILE, JSON.stringify(conf), 'utf8', err => {
+			await chainlink.logout();
+			fs.writeFile(JOB_FILE, JSON.stringify(newJob), 'utf8', err => {
 				if (err) throw err;
-				resolve(conf);
+				resolve(newJob);
 			});
 		}catch(e){
 			reject(e);
@@ -125,11 +118,10 @@ async function initCore(oracleAddress){
 }
 
 /* The main function of the tester. It initializes the testing environment, first deploying a SideToken contract and
-   an Oracle contract. Then configures the Chainlink node, creating the initiator and adapter bridges and a job that
-   uses them. Once the Chainlink node is ready, it deploys a Consumer contract configured with the previously
-   deployed SideToken and Oracle contracts, and the previously created job. Then mints tokens and send some
-   to the Consumer contract. Finally it calls the requestRIFPrice of the Consumer contract and then polls for
-   current price. */
+   an Oracle contract. Then configures the Chainlink node, creating a job that uses the RSK Initiator and RSK TX adapter.
+   Once the Chainlink node is ready, it deploys a Consumer contract configured with the previously deployed SideToken and
+   Oracle contracts, and the previously created job. Then mints tokens and send some to the Consumer contract. Finally it
+   calls the requestRIFPrice of the Consumer contract and then polls for current price. */
 async function initTestRunner(){
 	try {
 		// Connect web3 with RSK network
@@ -168,16 +160,25 @@ async function initTestRunner(){
 		const payment = "1000000000000000000";	
 		console.log('[INFO] - Requesting RIF Price to Consumer contract...');
 		let result2 = await Consumer.requestRIFPrice(payment, {from: accounts[0]}).then(function(result){
-			// Poll for current price every 5 seconds
-			let waitResult = setInterval(() => {
-				Consumer.currentPrice().then(function(price){
-					const priceNum = web3.utils.hexToNumber(price);
-					if (priceNum !== 0){
-						console.log('[INFO] - Received RIF price: ' + (priceNum / 100000000) + ' BTC');
-						clearInterval(waitResult);
+			// Watch for the RequestFulfilled event of the Consumer contract
+			Consumer.RequestFulfilled({
+				'address': Consumer.address,
+				'topics': [],
+				'fromBlock':'latest'
+			}, function(error, event){
+				if (!error){
+					if (event.event == 'RequestFulfilled'){
+						Consumer.currentPrice().then(function(price){
+							const priceNum = web3.utils.hexToNumber(price);
+							if (priceNum !== 0){
+								console.log('[INFO] - Received RIF price: ' + (priceNum / 100000000) + ' BTC');
+							}
+						});
 					}
-				});
-			}, 5000);
+				}else{
+					console.log(error);
+				}
+			});
 		});
 	}catch(e){
 		console.error('[ERROR] - Test Runner initialization failed:' + e);
@@ -258,41 +259,8 @@ function mint(network){
 }
 
 
-/* Configures a Chainlink node with an external adapter. First tries to create the adapter, if already
-   exists, tries to load incoming token from file. Returns the adapter incoming token */
-function setupAdapter(){
-	return new Promise(async function(resolve, reject){
-		const newBridge = await chainlink.createBridge(external.ADAPTER_NAME, external.ADAPTER_URL);
-		if (!newBridge.errors){
-			console.log(`[INFO] - Successfully created ${external.ADAPTER_NAME} bridge`);
-			const authInfo = {
-				incomingToken: newBridge.data.attributes.incomingToken
-			} 
-			resolve(authInfo);
-		}else{
-			// If the adapter is already created, read config from previously saved config file
-			if (newBridge.errors[0].detail.indexOf("already exists") > -1){
-				console.log(`[INFO] - ${external.ADAPTER_NAME} already exists, reading incoming token from file...`);
-				fs.readFile(CONFIGURATION_FILE, 'utf8', (err, data) => {
-					if (!err){
-						const jsonData = JSON.parse(data);
-						const authInfo = {
-							incomingToken: jsonData.incomingToken
-						}
-						resolve(authInfo);
-					}else{
-						reject(err);
-					}
-				});
-			}else{
-				reject(JSON.stringify(newBridge.errors));
-			}
-		}
-	});
-}
-
-/* Configures a Chainlink node with an initiator, adapter and job needed for running the tests,
-   first checks if they've been previously created, if not it creates them */
+/* Configures a Chainlink node with a job needed for running the tests,
+   first checks if it has been previously created, if not then creates it */
 function setupChainlinkNode(oracleAddress){
 	return new Promise(async function(resolve, reject) {
 		try {
@@ -303,70 +271,35 @@ function setupChainlinkNode(oracleAddress){
 				// There's at least one job created, so check if there's a config file already created
 				const jobConflict = 'Created job not equal to registered job in file';
 				try {
-					const data = fs.readFileSync(CONFIGURATION_FILE, 'utf8');
-					const config = JSON.parse(data);
+					const job = JSON.parse(fs.readFileSync(JOB_FILE, 'utf8'));
 					// If there's a config file created but the job saved is different that the job
 					// in the list, then throw exception
-					if (jobList[0].id !== config.jobId) throw jobConflict;
+					if (jobList[0].id !== job.jobId) throw jobConflict;
 					// If everything is ok, then resolve with the previously saved config
 					await chainlink.logout();
-					resolve(config);
+					resolve(job);
 				}catch(e){
-					// If the exception is the job conflict, then reinstall everything, else, there's
+					// If the exception is the job conflict, then reinstall, else, there's
 					// something else going on, so throw
 					if (e == jobConflict || e.toString().indexOf('no such file or directory') !== -1){
-						// Job is found in chainlink but config file doesn't, so remove everything and start over
-						const config = await reinstall(oracleAddress);
-						resolve(config);
+						// Job is found in chainlink but config file doesn't, so remove the job and start over
+						const job = await reinstall(oracleAddress);
+						resolve(job);
 					}else{
 						throw e;
 					}
 				}
 			}else{
 				// No jobs found, init the configuration
-				const config = await initCore(oracleAddress);
-				resolve(config);
+				const job = await initCore(oracleAddress);
+				resolve(job);
 			}
 		}catch(e){
 			console.error(e);
-			reject(e);
-		}
-	});
-}
-
-/* Configures an initiator on the Chainlink node, and returns the authentication credentials
-   that will be used for triggering job runs through the external initiator */
-function setupInitiator(){
-	return new Promise(async function(resolve, reject){
-		// Try to create an initiator
-		const newInit = await chainlink.createInitiator(external.INITIATOR_NAME, external.INITIATOR_URL);
-		if (!newInit.errors){
-			console.log(`[INFO] - Successfully created ${external.INITIATOR_NAME} initiator`);
-			const authInfo = {
-				incomingAccessKey: newInit.data.attributes.incomingAccessKey,
-				incomingSecret: newInit.data.attributes.incomingSecret
-			}
-			resolve(authInfo);
-		}else{
-			// If the initiator already exists, then a config file must have been created with the
-			// authentication credentials, so read it. If there's another type of error, then reject
-			if (newInit.errors[0].detail.indexOf("already exists") !== -1){
-				console.log(`[INFO] - ${external.INITIATOR_NAME} already exists, reading auth credentials from file...`);
-					fs.readFile(CONFIGURATION_FILE, 'utf8', (err, data) => {
-						if (!err){
-							const jsonData = JSON.parse(data);
-							const authInfo = {
-								incomingAccessKey: jsonData.incomingAccessKey,
-								incomingSecret: jsonData.incomingSecret
-							}
-							resolve(authInfo);
-						}else{
-							reject(err);
-						}
-					});
-			}else{
-				reject(JSON.stringify(newInit.errors));
-			}
+			setTimeout(()=>{
+				console.log('[ERROR] - Could not connect to Chainlink Node, trying again in 10 seconds...');
+				return setupChainlinkNode(oracleAddress);
+			}, 10000);
 		}
 	});
 }
@@ -395,10 +328,22 @@ function setupNetwork(node){
 		console.log(`[INFO] - Waiting for ${node.name} node to be ready, connecting to ${node.url}`);
 		// Wrap the process in a function to be able to call it again if can't connect
 		(function tryConnect() {
+			const wsOptions = {
+				clientConfig: {
+					keepAlive: true,
+					keepaliveInterval: 20000
+				},
+				reconnect: {
+					auto: true,
+					delay: 5000, // ms
+					maxAttempts: 5,
+					onTimeout: false
+				}
+			};
 			let web3_tmp = new Web3();
 			let web3 = new Web3();
 			// First use WebsocketProvider
-			const wsProvider = new Web3.providers.WebsocketProvider(node.url);
+			const wsProvider = new Web3.providers.WebsocketProvider(node.url, wsOptions);
 			// Pass the 'on' event listeners from WebsocketProvider to HDWalletProvider
 			HDWalletProvider.prototype.on = wsProvider.on.bind(wsProvider);
 			// Set the WebsocketProvider as provider and check connection with isListening()
@@ -423,7 +368,7 @@ function setupNetwork(node){
 	});
 }
 
-/* Remove every configuration created, and init the core again */
+/* Remove the job created, and init the core again */
 function reinstall(oracleAddress){
 	return new Promise(async function(resolve, reject){
 		try {
@@ -434,30 +379,14 @@ function reinstall(oracleAddress){
 				const res = await chainlink.archiveJob(jobList[x].id);
 			}
 
-			// Get bridges list from Chainlink
-			const bridgesList = await chainlink.getBridges();
-			// Checks if the RSK TX adapter exists, if it does then remove it
-			const adapterExists = (element) => element.id == external.ADAPTER_NAME;
-			if (bridgesList.some(adapterExists)){
-				console.log(`[INFO] - Deleting bridge ${external.ADAPTER_NAME}...`);
-				const res2 = await chainlink.deleteBridge(external.ADAPTER_NAME);
-			}
-
-			// Remove RSK Initiator
-			console.log(`[INFO] - Deleting initiator ${external.INITIATOR_NAME}...`);
-			const res3 = await chainlink.deleteInitiator(external.INITIATOR_NAME);
-
-			// Delete configuration and subscriptions file
+			// Delete configuration file
 			console.log('[INFO] - Deleting configuration file...');
-			fs.unlink(CONFIGURATION_FILE, (err) => {
-				console.log('[INFO] - Deleting subscriptions file...');
-				fs.unlink(SUBSCRIPTIONS_FILE, (err) => {
-					// Delete Consumer contract artifacts to force truffle to migrate again
-					console.log('[INFO] - Deleting Consumer contract artifacts...');
-					fs.unlink(`${CONTRACTS_BUILD_DIRECTORY}/Consumer.json`, async (err) => {
-						const conf = await initCore(oracleAddress);
-						resolve(conf);
-					})
+			fs.unlink(JOB_FILE, (err) => {
+				// Delete Consumer contract artifacts to force truffle to migrate again
+				console.log('[INFO] - Deleting Consumer contract artifacts...');
+				fs.unlink(`${CONTRACTS_BUILD_DIRECTORY}/Consumer.json`, async (err) => {
+					const job = await initCore(oracleAddress);
+					resolve(job);
 				});
 			});
 		}catch(e){

@@ -15,7 +15,7 @@ module.exports = async function(deployer, networks, accounts) {
    of the job created on the Chainlink node */
 function getJobSpec(){
 	return new Promise(async function(resolve, reject){
-		fs.readFile('../config/config.json', 'utf8', (err, data) => {
+		fs.readFile('./job.json', 'utf8', (err, data) => {
 			if (err) throw err;
 			const jobSpec = web3.utils.utf8ToHex(JSON.parse(data).jobId);
 			resolve(jobSpec);

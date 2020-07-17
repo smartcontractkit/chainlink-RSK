@@ -2,18 +2,18 @@ version: '3.5'
 
 x-db-env:
   &db-login-data
-  POSTGRES_DB: chainlink_dev
+  POSTGRES_MULTIPLE_DATABASES: "chainlink_dev,rsk_initiator,rsktx_adapter"
   POSTGRES_PASSWORD: chainlink
 
 services:
-  chainlink-db:
-    container_name: chainlink-db
+  postgres-server:
+    container_name: postgres-server
+    build: ./docker/postgres-server
     environment: *db-login-data
-    image: postgres:11.6
     ports:
       - 5433:5432
     volumes:
-      - chainlink-db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
   ethereum-node:
     build: ./docker/ethereum-node
     container_name: ethereum-node
@@ -32,17 +32,19 @@ services:
       - 4444:4444
       - 4445:4445
       - 30305:30305
+    volumes:
+      - rsk-db-data:/var/lib/rsk/database/regtest
   chainlink-node:
     container_name: chainlink-node
     build: ./docker/chainlink-node
     depends_on:
-      - chainlink-db
+      - postgres-server
       - ethereum-node
     environment: *db-login-data
     env_file:
       - ./docker/chainlink-node/.env
     links:
-      - "chainlink-db"
+      - "postgres-server"
       - "ethereum-node"
     ports:
       - 6688:6688
@@ -63,6 +65,9 @@ services:
       - "rsk-node"
     ports:
       - 30055:30055
+    secrets:
+      - source: chainlink_api
+        target: /home/rsk-initiator/src/.api
     volumes:
       - ./rsk-initiator/src:/home/rsk-initiator/src
       - ./chainlink-api-client/src:/home/chainlink-api-client/src
@@ -84,6 +89,8 @@ services:
       - 30056:30056
     secrets:
       - adapter_key
+      - source: chainlink_api
+        target: /home/rsktx-adapter/src/.api
     volumes:
       - ./rsktx-adapter/src:/home/rsktx-adapter/src
       - ./chainlink-api-client/src:/home/chainlink-api-client/src
@@ -130,8 +137,9 @@ volumes:
   adapter-modules:
   contracts-build-directory:
   chainlink-api-client-modules:
-  chainlink-db-data:
-  runner-modules:
+  db-data:
   geth-db-data:
   initiator-modules:
+  rsk-db-data:
+  runner-modules:
   shared-volume:

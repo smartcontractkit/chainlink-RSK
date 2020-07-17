@@ -1,5 +1,7 @@
 const bodyParser = require('body-parser');
+const { exec } = require('child_process');
 const express = require('express');
+const db = require('./db.js');
 const fs = require('fs');
 const Web3 = require('web3');
 
@@ -8,8 +10,6 @@ const app = express();
 const port = process.env.ADAPTER_PORT || 30056;
 
 let web3 = new Web3();
-// The auth object holds the adapter auth credentials for communicating with Chainlink
-let auth = {'incomingToken': ''};
 
 // Setup different configurations if the project is running from inside a Docker container. If not, use defaults
 const RSK_NODE = {
@@ -47,6 +47,8 @@ app.post("/adapter", async (req, res) => {
 		try {
 			// Try to fulfill the request and send the TX hash to Chainlink
 			const tx = await fulfillRequest(req.body.data);
+			// TODO: Save transaction history to database
+
 			var rJson = JSON.stringify({
 				"jobRunID": req.body.id,
 				"data": {
@@ -55,6 +57,8 @@ app.post("/adapter", async (req, res) => {
 				},
 				"error": null
 			});
+			// TODO: Add incoming token to headers on response
+
 			return res.send(rJson);
 		}catch(e){
 			// On error, print it and report to Chainlink
@@ -132,17 +136,34 @@ async function fulfillRequest(req){
 	});
 }
 
-/* Reads a json file and returns the parsed object */
-function loadJson(file){
-	return new Promise(function (resolve, reject){
-		fs.readFile(file, 'utf8', (err, data) => {
-			if (!err){
-				const jsonData = JSON.parse(data);
-				resolve(jsonData);
+/* Runs the setup script and checks if the Chainlink Node auth data is present */
+async function setupCredentials(){
+	return new Promise(async function(resolve, reject){
+		try {
+			if (process.env.DATABASE_URL) {
+				const proc = exec('npm run setup', async (error, stdout, stderr) => {
+					if (!error){
+						const result = await db.query('SELECT * FROM auth_data');
+						if (result.rows.length > 0){
+							resolve();
+						}else{
+							reject('No auth data present');
+						}
+					}else{
+						reject(error);
+					}
+				});
+				proc.stdout.on('data', function(data) {
+					process.stdout.write(data);
+				});
 			}else{
-				resolve({'error': err.toString()});
+				console.error('[ERROR] - DATABASE_URL environment variable is not set. Exiting...');
+				reject();
 			}
-		});
+		}catch(e){
+			console.error(e);
+			reject(e);
+		}
 	});
 }
 
@@ -181,7 +202,13 @@ function setupNetwork(node){
 	});
 }
 
-const server = app.listen(port, function() {
+const server = app.listen(port, async function() {
 	console.log(`[INFO] - RSK TX Adapter listening on port ${port}!`);
+	try {
+		await setupCredentials();
+	}catch(e){
+		console.log(e);
+		process.exit();
+	}
 	adapterSetup();
 });
