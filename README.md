@@ -166,13 +166,13 @@ Now the only thing left to do is to test the request flow. First, login into the
 	],
 	"tasks": [
 		{
-            "type": "httpget"
+			"type": "httpget"
 		},
 		{
-            "type": "jsonparse"
+			"type": "jsonparse"
 		},
 		{
-            "type": "multiply"
+			"type": "multiply"
 		},
 		{
 			"type": "ethuint256"
@@ -230,22 +230,22 @@ Login to the Chainlink Operator WebUI and add the following job. Replace RSK_INI
 	],
 	"tasks": [
 		{
-            "type": "httpget",
-            "params": {
-                "get": "https://api.liquid.com/products/580"
-            }
+			"type": "httpget",
+			"params": {
+				"get": "https://api.liquid.com/products/580"
+			}
 		},
 		{
-            "type": "jsonparse",
-            "params": {
-                "path": "last_traded_price"
-            }
+			"type": "jsonparse",
+			"params": {
+				"path": "last_traded_price"
+			}
 		},
 		{
-            "type": "multiply",
-            "params": {
-                "times": 100000000
-            }
+			"type": "multiply",
+			"params": {
+				"times": 100000000
+			}
 		},
 		{
 			"type": "ethuint256"
