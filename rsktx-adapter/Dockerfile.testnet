@@ -1,0 +1,21 @@
+FROM node:11.15.0
+
+RUN mkdir -p /home/rsktx-adapter/src/node_modules
+RUN mkdir -p /home/chainlink-api-client/src
+
+COPY ./rsktx-adapter/src/ /home/rsktx-adapter/src/
+COPY ./chainlink-api-client/src/ /home/chainlink-api-client/
+COPY ./chainlink-api-client/package*.json /home/chainlink-api-client/
+
+RUN chown -R node:node /home/
+
+USER node
+
+WORKDIR /home/rsktx-adapter/src
+
+RUN npm install 2>&1
+
+COPY --chown=node:node . .
+
+ENTRYPOINT ["npm"]
+CMD ["start"]

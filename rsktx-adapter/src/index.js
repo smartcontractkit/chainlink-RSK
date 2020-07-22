@@ -85,6 +85,7 @@ async function adapterSetup(){
 		// Import the adapter private key to web3 wallets and make it the default account
 		web3.eth.accounts.wallet.add({privateKey: '0x' + adapterKey});
 		web3.defaultAccount = web3.eth.accounts.wallet[0].address;
+		console.log(`[INFO] - Adapter account address is ${web3.defaultAccount}`);
 	}catch(e){
 		console.error('[ERROR] - Adapter setup failed:' + e);
 	}
@@ -110,6 +111,7 @@ async function fulfillRequest(req){
 			// TX params
 			const tx = {
 				gas: 500000,
+				gasPrice: 20000000000,
 				to: req.address,
 				data: encodedFulfill
 			};

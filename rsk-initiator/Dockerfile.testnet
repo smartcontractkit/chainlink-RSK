@@ -1,0 +1,21 @@
+FROM node:11.15.0
+
+RUN mkdir -p /home/rsk-initiator/src/node_modules
+RUN mkdir -p /home/chainlink-api-client/src
+
+COPY ./rsk-initiator/src/ /home/rsk-initiator/src/
+COPY ./chainlink-api-client/src/ /home/chainlink-api-client/
+COPY ./chainlink-api-client/package*.json /home/chainlink-api-client/
+
+RUN chown -R node:node /home/
+
+USER node
+
+WORKDIR /home/rsk-initiator/src
+
+RUN npm install 2>&1
+
+COPY --chown=node:node . .
+
+ENTRYPOINT ["npm"]
+CMD ["start"]

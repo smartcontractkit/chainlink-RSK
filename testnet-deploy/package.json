@@ -1,0 +1,14 @@
+{
+	"name": "testnet-deploy",
+	"version": "0.0.1",
+	"description": "Deploy Oracle to RSK Testnet",
+	"scripts": {
+		"test": "npx truffle test"
+	},
+	"dependencies": {
+		"@truffle/contract": "^4.2.3",
+		"@truffle/hdwallet-provider": "^1.0.34",
+		"truffle": "5.1.8"
+	},
+	"devDependencies": {}
+}

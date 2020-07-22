@@ -12,8 +12,6 @@ USER node
 
 WORKDIR /home/rsk-initiator/src
 
-RUN mkdir /home/rsk-initiator/config
-
 RUN npm install 2>&1 \
     && mv /home/rsk-initiator/src/node_modules /home/rsk-initiator/
 RUN rm /home/rsk-initiator/node_modules/chainlink-api-client

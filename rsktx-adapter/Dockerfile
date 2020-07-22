@@ -12,8 +12,6 @@ USER node
 
 WORKDIR /home/rsktx-adapter/src
 
-RUN mkdir /home/rsktx-adapter/config
-
 RUN npm install 2>&1 \
     && mv /home/rsktx-adapter/src/node_modules /home/rsktx-adapter/
 RUN rm /home/rsktx-adapter/node_modules/chainlink-api-client

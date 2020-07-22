@@ -120,7 +120,7 @@ async function initiatorSetup(){
 function isDuplicateEvent(event){
 	if (Events.length > 0){
 		for (let x = 0; x < Events.length; x++){
-			if (Events[x].transactionHash == event.transactionHash && Events[x].data == event.data && Events[x].topics == event.topics){
+			if (Events[x].transactionHash == event.transactionHash && Events[x].topics.toString() == event.topics.toString()){
 				return true;
 			}else{
 				if ((x + 1) == Events.length){
@@ -184,7 +184,6 @@ async function newSubscription(jobId, oracleAddress){
 						console.log(`[INFO] - New Oracle request with ID ${logs.requestId}. Triggering job ${specId}...`);
 						// Save the event in the Events array to allow for checking duplicates
 						Events.push(event);
-						const eventPos = Events.length - 1;
 						// If there's request data present in the logs, then extract and decode it
 						let clReq;
 						if (logs.data !== null){
@@ -219,10 +218,10 @@ async function newSubscription(jobId, oracleAddress){
 						}
 						// Give it some time to wait for possible incoming repeated events, then remove it from array
 						setTimeout(() => {
-							Events.splice(eventPos, 1);
-						}, 20000);
+							Events.splice(0, 1);
+						}, 40000);
 					}else{
-						console.log('[INFO] - Oracle requested for a job ID not registered on Initiator database, skipping...');
+						console.log('[INFO] - Detected duplicate event, skipping...');
 					}
 				}catch(e){
 					console.error(e);
