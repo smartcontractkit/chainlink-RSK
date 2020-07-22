@@ -14,8 +14,7 @@ module.exports = {
 			network_id: 31,
 			networkChecktimeout: 10000,
 			gas: 5000000,
-			url: rskNode,
-			websockets: true
+			url: rskNode
 		}
 	},
 	compilers: {
