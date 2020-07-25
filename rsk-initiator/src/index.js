@@ -219,7 +219,7 @@ async function newSubscription(jobId, oracleAddress){
 						// Give it some time to wait for possible incoming repeated events, then remove it from array
 						setTimeout(() => {
 							Events.splice(0, 1);
-						}, 40000);
+						}, 80000);
 					}else{
 						console.log('[INFO] - Detected duplicate event, skipping...');
 					}
