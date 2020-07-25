@@ -10,6 +10,8 @@ const app = express();
 const port = process.env.ADAPTER_PORT || 30056;
 
 let web3 = new Web3();
+// Handle the TX count through the currentNonce variable
+let currentNonce;
 
 // Setup different configurations if the project is running from inside a Docker container. If not, use defaults
 const RSK_NODE = {
@@ -85,6 +87,8 @@ async function adapterSetup(){
 		// Import the adapter private key to web3 wallets and make it the default account
 		web3.eth.accounts.wallet.add({privateKey: '0x' + adapterKey});
 		web3.defaultAccount = web3.eth.accounts.wallet[0].address;
+		// Initialize currentNonce variable with current account's TX count
+		currentNonce = await web3.eth.getTransactionCount(web3.defaultAccount, 'pending');
 		console.log(`[INFO] - Adapter account address is ${web3.defaultAccount}`);
 	}catch(e){
 		console.error('[ERROR] - Adapter setup failed:' + e);
@@ -104,21 +108,20 @@ async function fulfillRequest(req){
 			if (typeof req.dataPrefix !== 'undefined'){
 				dataPrefix = req.dataPrefix.slice(2);
 			}
-
 			// Concatenate the data
 			encodedFulfill += functionSelector + dataPrefix + req.result.slice(2);
-
 			// TX params
 			const tx = {
 				gas: 500000,
 				gasPrice: 20000000000,
+				nonce: currentNonce,
 				to: req.address,
 				data: encodedFulfill
 			};
-
+			// Increment nonce for the next TX
+			currentNonce++;
 			// Sign the transaction with the adapter's private key
 			const signed = await web3.eth.accounts.signTransaction(tx, adapterKey);
-
 			// Send the signed transaction and resolve the TX hash, only if the transaction
 			// succeeded and events were emitted. If not, reject with tx receipt
 			web3.eth.sendSignedTransaction(signed.rawTransaction).then(receipt => {
