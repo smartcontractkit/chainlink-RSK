@@ -128,8 +128,8 @@ docker build -t rsktx-adapter-testnet -f ./rsktx-adapter/Dockerfile.testnet .
 You can run the services containers in several ways. For the purpose of this quick guide, we'll use the docker run command. Be sure to pass the api credentials and make them available through the .api file in the destination paths /home/rsk-initiator/src/.api for the initiator, and /home/rsktx-adapter/src/.api for the adapter. You need to do the same with the .adapterKey file when runnning the RSKTX Adapter, also you need to load the environment variables from the .env-testnet file. In the example, optionally, a port parameter is added to map the service port to localhost.
 
 ```bash
-docker run -v /path/to/host/api/file:/home/rsk-initiator/src/.api -e /path/to/initiator/.env-testnet -p 30055:30055 rsk-initiator-testnet
-docker run -v /path/to/host/api/file:/home/rsktx-adapter/src/.api -v /path/to/host/adapterKey/file:/home/rsktx-adapter/src/.adapterKey -e /path/to/adapter/.env-testnet -p 30056:30056 rsktxk-adapter-testnet
+docker run -v /path/to/host/api/file:/home/rsk-initiator/src/.api --env-file /path/to/initiator/.env-testnet -p 30055:30055 rsk-initiator-testnet
+docker run -v /path/to/host/api/file:/home/rsktx-adapter/src/.api -v /path/to/host/adapterKey/file:/home/rsktx-adapter/src/.adapterKey --env-file /path/to/adapter/.env-testnet -p 30056:30056 rsktxk-adapter-testnet
 ```
 The services will configure the database and register the Initiator and Adapter in Chainlink Core when first started.
 
