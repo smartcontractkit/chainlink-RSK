@@ -3,6 +3,7 @@ const { exec } = require('child_process');
 const express = require('express');
 const db = require('./db.js');
 const fs = require('fs');
+const rskUtils = require('rskjs-util');
 const Web3 = require('web3');
 require('console-stamp')(console);
 
@@ -90,7 +91,8 @@ async function adapterSetup(){
 		web3.defaultAccount = web3.eth.accounts.wallet[0].address;
 		// Initialize currentNonce variable with current account's TX count
 		currentNonce = await web3.eth.getTransactionCount(web3.defaultAccount, 'pending');
-		console.info(`Adapter account address is ${web3.defaultAccount}`);
+		console.info(`Adapter account address RSK Checksum: ${rskUtils.toChecksumAddress(web3.defaultAccount, chainId)}`);
+		console.info(`Adapter account address ETH Checksum: ${web3.utils.toChecksumAddress(web3.defaultAccount)}`);
 	}catch(e){
 		console.error('Adapter setup failed:' + e);
 	}

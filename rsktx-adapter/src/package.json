@@ -13,6 +13,7 @@
 		"console-stamp": "^0.2.9",
 		"express": "^4.17.1",
 		"pg": "^8.3.0",
+		"rskjs-util": "^1.0.3",
 		"web3": "^1.2.7"
 	},
 	"devDependencies": {
