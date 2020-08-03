@@ -220,7 +220,7 @@ module.exports = class ChainlinkAPIClient {
 				headers: options.headers,
 				method: options.method
 			}
-			if (options.method == 'POST' && typeof options.data !== 'undefined'){
+			if ((options.method == 'POST' || options.method == 'PATCH') && typeof options.data !== 'undefined'){
 				config['body'] = JSON.stringify(options.data);
 			}
 			fetch(url, config).then(async r => {
@@ -255,4 +255,19 @@ module.exports = class ChainlinkAPIClient {
 		});
 	}
 
+	updateJobRun(token, data) {
+		return new Promise (async (resolve, reject) => {
+			this.request(`v2/runs/${data.id}`, {
+				'data': data,
+				'headers': {
+					'Authorization': token
+				},
+				'method': 'PATCH'
+			}).then(rJson => {
+				resolve(rJson);
+			}).catch(e => {
+				reject(e);
+			});
+		});
+	}
 }
