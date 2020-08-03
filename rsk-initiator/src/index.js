@@ -6,6 +6,7 @@ const express = require('express');
 const fs = require('fs');
 const Web3 = require('web3');
 const db = require('./db.js');
+require('console-stamp')(console);
 
 // The OracleRequest event ABI for decoding the event logs
 const oracleRequestAbi = [{"indexed":true,"name":"specId","type":"bytes32"},{"indexed":false,"name":"requester","type":"address"},{"indexed":false,"name":"requestId","type":"bytes32"},{"indexed":false,"name":"payment","type":"uint256"},{"indexed":false,"name":"callbackAddr","type":"address"},{"indexed":false,"name":"callbackFunctionId","type":"bytes4"},{"indexed":false,"name":"cancelExpiration","type":"uint256"},{"indexed":false,"name":"dataVersion","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"}];
@@ -41,7 +42,7 @@ app.use(bodyParser.json());
 
 /* Simple logger middleware that prints the requests received on the initiator endpoints */
 app.use(function (req, res, next) {
-	console.log('[INFO] - Received ' + req.method + ' request on ' + req.baseUrl + req.originalUrl + ' URL');
+	console.info('Received ' + req.method + ' request on ' + req.baseUrl + req.originalUrl + ' URL');
 	next();
 });
 
@@ -62,16 +63,16 @@ app.post("/initiator", async (req, res) => {
 		if (typeof req.headers['x-chainlink-ea-accesskey'] !== 'undefined' && typeof req.headers['x-chainlink-ea-secret'] !== 'undefined'){
 			const outgoingAccessKey = req.headers['x-chainlink-ea-accesskey'];
 			const outgoingSecret = req.headers['x-chainlink-ea-secret'];
-			console.log('[INFO] - Received a new job from Chainlink');
+			console.info('Received a new job from Chainlink');
 
 			// TODO: Validate Chainlink auth credentials (outgoingAccessKey and outgoingSecret) and return 401 if not validated
 
 			// Add the new job to the subscriptions list
-			console.log(`[INFO] - Adding Job ${req.body.jobId} to the subscription list...`);
+			console.info(`Adding Job ${req.body.jobId} to the subscription list...`);
 			Subscriptions.push({'jobId':req.body.jobId, 'address':req.body.params.address});
 
 			// Save the new subscription to database
-			console.log(`[INFO] - Saving subscription...`);
+			console.info(`Saving subscription...`);
 			await saveSubscription(req.body.jobId, req.body.params.address);
 
 			// Subscribe to RSK node for events from that Oracle corresponding to that new job id
@@ -95,12 +96,12 @@ async function initiatorSetup(){
 		// Configure the web3 instance connected to RSK network
 		web3 = await setupNetwork(RSK_CONFIG);
 		const chainId = await web3.eth.net.getId();
-		console.log(`[INFO] - Web3 is connected to the ${RSK_CONFIG.name} node. Chain ID: ${chainId}`);
+		console.info(`Web3 is connected to the ${RSK_CONFIG.name} node. Chain ID: ${chainId}`);
 
 		// Load the subscriptions from database
 		let subs = await loadSubscriptions();
 		if (subs.length > 0){
-			console.log('[INFO] - Loaded subscriptions from database');
+			console.info('Loaded subscriptions from database');
 			subs.forEach(sub => {
 				Subscriptions.push({
 					'jobId': sub.job,
@@ -109,10 +110,10 @@ async function initiatorSetup(){
 				newSubscription(sub.job, sub.address);
 			});
 		}else{
-			console.log('[INFO] - No subscriptions yet');
+			console.info('No subscriptions yet');
 		}
 	}catch(e){
-		console.error('[ERROR] - Initiator setup failed:' + e);
+		console.error('Initiator setup failed:' + e);
 	}
 }
 
@@ -157,7 +158,7 @@ async function loadSubscriptions(){
 			const result = await db.query(sql);
 			resolve(result.rows);
 		}catch(e){
-			console.log(e);
+			console.error(e);
 			reject(e);
 		}
 	});
@@ -166,7 +167,7 @@ async function loadSubscriptions(){
 /* Subscribes to the RSK node for events emitted from the given Oracle address that contains a request
    for the specified job ID */
 async function newSubscription(jobId, oracleAddress){
-	console.log(`[INFO] - Subscribing to Oracle at ${oracleAddress} for requests to job ID ${jobId}...`);
+	console.info(`Subscribing to Oracle at ${oracleAddress} for requests to job ID ${jobId}...`);
 	const currentBlock = await web3.eth.getBlockNumber();
 	let subscription = web3.eth.subscribe('logs', {
 		address: oracleAddress,
@@ -181,7 +182,7 @@ async function newSubscription(jobId, oracleAddress){
 					const specId = web3.utils.hexToUtf8(event.topics[1]);
 					// If the request is for the specified job and is not a duplicate event
 					if (jobId == specId && !isDuplicateEvent(event)){
-						console.log(`[INFO] - New Oracle request with ID ${logs.requestId}. Triggering job ${specId}...`);
+						console.info(`New Oracle request with ID ${logs.requestId}. Triggering job ${specId}...`);
 						// Save the event in the Events array to allow for checking duplicates
 						Events.push(event);
 						// If there's request data present in the logs, then extract and decode it
@@ -195,9 +196,9 @@ async function newSubscription(jobId, oracleAddress){
 							clReq = {};
 						}
 						/* Add to the request some custom parameters destined for the RSK TX adapter:
-						   @address is the address of the Oracle contract that the adapter has to call
-						   @dataPrefix is the encoded parameters that the adapter will need to call the Oracle
-						   @functionSelector is the selector of the Oracle fulfill function */
+						@address is the address of the Oracle contract that the adapter has to call
+						@dataPrefix is the encoded parameters that the adapter will need to call the Oracle
+						@functionSelector is the selector of the Oracle fulfill function */
 						clReq.address = oracleAddress;
 						clReq.dataPrefix = web3.eth.abi.encodeParameters([
 								'bytes32', 'uint256', 'address', 'bytes4', 'uint256'
@@ -212,7 +213,7 @@ async function newSubscription(jobId, oracleAddress){
 						// Trigger the job run, passing auth credentials and the complete request
 						const newRun = await chainlink.initiateJobRun(jobId, auth.incomingAccessKey, auth.incomingSecret, clReq);
 						if (!newRun.errors){
-							console.log(`[INFO] - Initiated job run with ID ${newRun.data.attributes.id}...`);
+							console.info(`Initiated job run with ID ${newRun.data.attributes.id}...`);
 						}else{
 							throw newRun.errors;
 						}
@@ -221,12 +222,12 @@ async function newSubscription(jobId, oracleAddress){
 							Events.splice(0, 1);
 						}, 80000);
 					}else{
-						console.log('[INFO] - Detected duplicate event, skipping...');
+						console.info('Detected duplicate event, skipping...');
 					}
-				}catch(e){
-					console.error(e);
-				}
+			}catch(e){
+				console.error(e);
 			}
+		}
 	});
 }
 
@@ -241,7 +242,7 @@ async function saveSubscription(jobId, oracleAddress){
 			const result = await db.query(sqlInsert);
 			resolve(true);
 		}catch(e){
-			console.log(e);
+			console.error(e);
 			reject(e);
 		}
 	});
@@ -268,7 +269,7 @@ async function setupCredentials(){
 					process.stdout.write(data);
 				});
 			}else{
-				console.error('[ERROR] - DATABASE_URL environment variable is not set. Exiting...');
+				console.error('DATABASE_URL environment variable is not set. Exiting...');
 				reject();
 			}
 		}catch(e){
@@ -281,7 +282,7 @@ async function setupCredentials(){
 /* Creates a new web3 instance connected to the specified network */
 function setupNetwork(node){
 	return new Promise(async function(resolve, reject){
-		console.log(`[INFO] - Waiting for ${node.name} node to be ready, connecting to ${node.url}`);
+		console.info(`Waiting for ${node.name} node to be ready, connecting to ${node.url}`);
 		// Wrap the process in a function to be able to call it again if can't connect
 		(function tryConnect() {
 			const wsOptions = {
@@ -303,7 +304,7 @@ function setupNetwork(node){
 				resolve(web3);
 			}).catch(e => {
 				// If error, print it and try to connect again after 10 seconds
-				console.error(`[ERROR] - Could not connect to ${node.name} node, retrying in 10 seconds...`)			
+				console.error(`Could not connect to ${node.name} node, retrying in 10 seconds...`)			
 				console.error(e);
 				setTimeout(tryConnect, 10000);
 			});
@@ -314,11 +315,11 @@ function setupNetwork(node){
 }
 
 const server = app.listen(port, async function() {
-	console.log(`[INFO] - RSK Initiator listening on port ${port}!`);
+	console.info(`RSK Initiator listening on port ${port}!`);
 	try {
 		await setupCredentials();
 	}catch(e){
-		console.log(e);
+		console.error(e);
 		process.exit();
 	}
 	initiatorSetup();

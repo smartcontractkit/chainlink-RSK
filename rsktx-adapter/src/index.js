@@ -4,6 +4,7 @@ const express = require('express');
 const db = require('./db.js');
 const fs = require('fs');
 const Web3 = require('web3');
+require('console-stamp')(console);
 
 const adapterKey = fs.readFileSync(".adapterKey").toString().trim();
 const app = express();
@@ -30,7 +31,7 @@ app.use(bodyParser.json());
 
 // Simple logger middleware that prints the requests received on the adapter endpoints
 app.use(function (req, res, next) {
-	console.log('[INFO] - Received ' + req.method + ' request on ' + req.baseUrl + req.originalUrl + ' URL');
+	console.info('Received ' + req.method + ' request on ' + req.baseUrl + req.originalUrl + ' URL');
 	next();
 });
 
@@ -45,7 +46,7 @@ app.post("/adapter", async (req, res) => {
 
 	// Checks if it is a valid request
 	if ((typeof req.body.id !== 'undefined') && (typeof req.body.data !== 'undefined')){
-		console.log(`[INFO] - Adapter received fulfillment request for run id ${req.body.id}`);
+		console.info(`Adapter received fulfillment request for run id ${req.body.id}`);
 		try {
 			// Try to fulfill the request and send the TX hash to Chainlink
 			const tx = await fulfillRequest(req.body.data);
@@ -82,16 +83,16 @@ async function adapterSetup(){
 		// Configures the web3 instance connected to RSK network
 		web3 = await setupNetwork(RSK_CONFIG);
 		const chainId = await web3.eth.net.getId();
-		console.log(`[INFO] - Web3 is connected to the ${RSK_CONFIG.name} node. Chain ID: ${chainId}`);
+		console.info(`Web3 is connected to the ${RSK_CONFIG.name} node. Chain ID: ${chainId}`);
 
 		// Import the adapter private key to web3 wallets and make it the default account
 		web3.eth.accounts.wallet.add({privateKey: '0x' + adapterKey});
 		web3.defaultAccount = web3.eth.accounts.wallet[0].address;
 		// Initialize currentNonce variable with current account's TX count
 		currentNonce = await web3.eth.getTransactionCount(web3.defaultAccount, 'pending');
-		console.log(`[INFO] - Adapter account address is ${web3.defaultAccount}`);
+		console.info(`Adapter account address is ${web3.defaultAccount}`);
 	}catch(e){
-		console.error('[ERROR] - Adapter setup failed:' + e);
+		console.error('Adapter setup failed:' + e);
 	}
 }
 
@@ -110,7 +111,7 @@ async function fulfillRequest(req){
 			}
 			// Concatenate the data
 			encodedFulfill += functionSelector + dataPrefix + req.result.slice(2);
-			// TX params
+			// TX params		
 			const tx = {
 				gas: 500000,
 				gasPrice: 20000000000,
@@ -125,7 +126,7 @@ async function fulfillRequest(req){
 			// Send the signed transaction and resolve the TX hash, only if the transaction
 			// succeeded and events were emitted. If not, reject with tx receipt
 			web3.eth.sendSignedTransaction(signed.rawTransaction).then(receipt => {
-				console.log('[INFO] - Fulfill Request TX has been mined: ' + receipt.transactionHash);
+				console.info('Fulfill Request TX has been mined: ' + receipt.transactionHash);
 				if ((typeof receipt.status !== 'undefined' && receipt.status == true) && (typeof receipt.logs !== 'undefined' && receipt.logs.length > 0)){
 					resolve(receipt.transactionHash);
 				}else{
@@ -162,7 +163,7 @@ async function setupCredentials(){
 					process.stdout.write(data);
 				});
 			}else{
-				console.error('[ERROR] - DATABASE_URL environment variable is not set. Exiting...');
+				console.error('DATABASE_URL environment variable is not set. Exiting...');
 				reject();
 			}
 		}catch(e){
@@ -175,7 +176,7 @@ async function setupCredentials(){
 /* Creates a new web3 instance connected to the specified network */
 function setupNetwork(node){
 	return new Promise(async function(resolve, reject){
-		console.log(`[INFO] - Waiting for ${node.name} node to be ready, connecting to ${node.url}`);
+		console.info(`Waiting for ${node.name} node to be ready, connecting to ${node.url}`);
 		// Wrap the process in a function to be able to call it again if can't connect
 		(function tryConnect() {
 			const wsOptions = {
@@ -197,7 +198,7 @@ function setupNetwork(node){
 				resolve(web3);
 			}).catch(e => {
 				// If error, print it and try to connect again after 10 seconds
-				console.error(`[ERROR] - Could not connect to ${node.name} node, retrying in 10 seconds...`)
+				console.error(`Could not connect to ${node.name} node, retrying in 10 seconds...`)
 				console.error(e);
 				setTimeout(tryConnect, 10000);
 			});
@@ -208,11 +209,11 @@ function setupNetwork(node){
 }
 
 const server = app.listen(port, async function() {
-	console.log(`[INFO] - RSK TX Adapter listening on port ${port}!`);
+	console.info(`RSK TX Adapter listening on port ${port}!`);
 	try {
 		await setupCredentials();
 	}catch(e){
-		console.log(e);
+		console.error(e);
 		process.exit();
 	}
 	adapterSetup();
