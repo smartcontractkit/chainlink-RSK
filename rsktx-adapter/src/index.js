@@ -1,4 +1,5 @@
 const bodyParser = require('body-parser');
+const ChainlinkAPIClient = require('chainlink-api-client');
 const { exec } = require('child_process');
 const express = require('express');
 const db = require('./db.js');
@@ -28,6 +29,11 @@ const RSK_CONFIG = {
 	'url': `${RSK_NODE.protocol}://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
 };
 
+// Initialize the Chainlink API Client without credentials, the adapter will login using the token
+let chainlink = new ChainlinkAPIClient({
+	basePath: process.env.CHAINLINK_BASE_URL
+});
+
 app.use(bodyParser.json());
 
 // Simple logger middleware that prints the requests received on the adapter endpoints
@@ -47,28 +53,26 @@ app.post("/adapter", async (req, res) => {
 
 	// Checks if it is a valid request
 	if ((typeof req.body.id !== 'undefined') && (typeof req.body.data !== 'undefined')){
-		console.info(`Adapter received fulfillment request for run id ${req.body.id}`);
 		try {
-			// Try to fulfill the request and send the TX hash to Chainlink
-			const tx = await fulfillRequest(req.body.data);
-			// TODO: Save transaction history to database
-
+			const runId = req.body.id;
+			console.info(`Adapter received fulfillment request for run id ${runId}`);
+			// Process the request while sending pending status to Chainlink
+			processRequest(runId, req.body.data);
 			var rJson = JSON.stringify({
-				"jobRunID": req.body.id,
-				"data": {
-					"status": "completed",
-					"result": tx
-				},
+				"jobRunID": runId,
+				"data": {},
+				"status": "pending",
+				"pending": true,
 				"error": null
 			});
-			// TODO: Add incoming token to headers on response
-
 			return res.send(rJson);
 		}catch(e){
 			// On error, print it and report to Chainlink
 			console.error(e);
 			var rJson = JSON.stringify({
-				"jobRunID": req.body.id,
+				"jobRunID": runId,
+				"data": {},
+				"status": "errored",
 				"error": "Error trying to fulfill request"
 			});
 			return res.send(rJson);
@@ -113,10 +117,11 @@ async function fulfillRequest(req){
 			}
 			// Concatenate the data
 			encodedFulfill += functionSelector + dataPrefix + req.result.slice(2);
+			const gasPrice = parseInt(await web3.eth.getGasPrice() * 1.3);
 			// TX params		
 			const tx = {
 				gas: 500000,
-				gasPrice: 20000000000,
+				gasPrice: gasPrice,
 				nonce: currentNonce,
 				to: req.address,
 				data: encodedFulfill
@@ -127,19 +132,74 @@ async function fulfillRequest(req){
 			const signed = await web3.eth.accounts.signTransaction(tx, adapterKey);
 			// Send the signed transaction and resolve the TX hash, only if the transaction
 			// succeeded and events were emitted. If not, reject with tx receipt
-			web3.eth.sendSignedTransaction(signed.rawTransaction).then(receipt => {
+			web3.eth.sendSignedTransaction(signed.rawTransaction)
+			.on('receipt', function(receipt){
 				console.info('Fulfill Request TX has been mined: ' + receipt.transactionHash);
 				if ((typeof receipt.status !== 'undefined' && receipt.status == true) && (typeof receipt.logs !== 'undefined' && receipt.logs.length > 0)){
+					// TODO: Save transaction history to database
 					resolve(receipt.transactionHash);
 				}else{
 					reject(receipt);
 				}
-			}).catch(error => {
-				console.error(error);
-				reject(error);
+			}).on('transactionHash', async function(hash){
+				console.info(`Transaction ${hash} is in TX Pool`);
+			}).on('error', function(e){
+				reject(e);
 			});
 		}catch(e){
 			reject(e);
+		}
+	});
+}
+
+/* Reads the database and returns the Chainlink Node auth data */
+function loadCredentials(){
+	return new Promise(async function (resolve, reject){
+		const result = await db.query('SELECT * FROM auth_data');
+		if (result.rows.length > 0){
+			const auth = {
+				incomingToken: result.rows[0].incoming_token
+			};
+			resolve(auth);
+		}else{
+			reject('No auth data present');
+		}
+	});
+}
+
+/* Tries to fulfill a request and sends the TX hash to Chainlink */
+async function processRequest(runId, reqData){
+	const auth = await loadCredentials();
+	fulfillRequest(reqData).then(async function(tx){
+		const data = {
+			"id": runId,
+			"data": {
+				"result": tx
+			},
+			"status": "completed",
+			"pending": false
+		}
+		// Update the job run, passing auth credentials and data object
+		const updateRun = await chainlink.updateJobRun(auth.incomingToken, data);
+		if (!updateRun.errors){
+			console.info(`Updated job run with ID ${updateRun.data.attributes.id} status: COMPLETED`);
+		}else{
+			throw updateRun.errors;
+		}
+	}).catch(async e => {
+		console.error(e);
+		const data = {
+			"id": runId,
+			"data": {},
+			"status": "errored",
+			"error": "Error trying to fulfill request"
+		}
+		// Update the job run, passing auth credentials and data object
+		const updateRun = await chainlink.updateJobRun(auth.incomingToken, data);
+		if (!updateRun.errors){
+			console.info(`Updated job run with ID ${updateRun.data.attributes.id} status: ERRORED`);
+		}else{
+			throw updateRun.errors;
 		}
 	});
 }
