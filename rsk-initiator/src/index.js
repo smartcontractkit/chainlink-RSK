@@ -17,7 +17,7 @@ const port = process.env.INITIATOR_PORT || 30055;
 let web3 = new Web3();
 // The Subscriptions array holds the current job/oracle pairs that needs to be watched for events
 let Subscriptions = [];
-// The Events array holds the current unique events being processed. Allows for handling repeated events.
+// The Events array holds the current event logs being processed for every jobId. Allows for chain reorg protection.
 let Events = [];
 
 // Setup different configurations if the project is running from inside a Docker container. If not, use defaults
@@ -33,7 +33,7 @@ const RSK_CONFIG = {
 	'url': `${RSK_NODE.protocol}://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
 };
 
-// Initialize the Chainlink API Client without credentials, the adapter will login through the access key and secret
+// Initialize the Chainlink API Client without credentials, the initiator will login using the access key and secret
 let chainlink = new ChainlinkAPIClient({
 	basePath: process.env.CHAINLINK_BASE_URL
 });
@@ -117,23 +117,6 @@ async function initiatorSetup(){
 	}
 }
 
-/* Returns true if the event received has already been processed (is present in the Events array) */
-function isDuplicateEvent(event){
-	if (Events.length > 0){
-		for (let x = 0; x < Events.length; x++){
-			if (Events[x].transactionHash == event.transactionHash && Events[x].topics.toString() == event.topics.toString()){
-				return true;
-			}else{
-				if ((x + 1) == Events.length){
-					return false;
-				}
-			}
-		}
-	}else{
-		return false;
-	}
-}
-
 /* Reads the database and returns the Chainlink Node auth data */
 function loadCredentials(){
 	return new Promise(async function (resolve, reject){
@@ -171,63 +154,47 @@ async function newSubscription(jobId, oracleAddress){
 	const currentBlock = await web3.eth.getBlockNumber();
 	let subscription = web3.eth.subscribe('logs', {
 		address: oracleAddress,
-		fromBlock: web3.utils.toHex(currentBlock)
-	}, async function(error, event){
-		if (!error)
-			// If the event comes from the given Oracle address
-			if (event.address == oracleAddress){
-				try {
-					// Decode the event logs
-					const logs = web3.eth.abi.decodeLog(oracleRequestAbi, event.data, event.topics);
-					const specId = web3.utils.hexToUtf8(event.topics[1]);
-					// If the request is for the specified job and is not a duplicate event
-					if (jobId == specId && !isDuplicateEvent(event)){
-						console.info(`New Oracle request with ID ${logs.requestId}. Triggering job ${specId}...`);
-						// Save the event in the Events array to allow for checking duplicates
-						Events.push(event);
-						// If there's request data present in the logs, then extract and decode it
-						let clReq;
-						if (logs.data !== null){
-							// Extract the CBOR data buffer from the log, adding the required initial and final bytes for proper format
-							const encodedReq = new Buffer.from(('bf' + logs.data.slice(2) + 'ff'), 'hex');
-							// Decode the Chainlink request from the CBOR data buffer
-							clReq = await cbor.decodeFirst(encodedReq);
-						}else{
-							clReq = {};
-						}
-						/* Add to the request some custom parameters destined for the RSK TX adapter:
-						@address is the address of the Oracle contract that the adapter has to call
-						@dataPrefix is the encoded parameters that the adapter will need to call the Oracle
-						@functionSelector is the selector of the Oracle fulfill function */
-						clReq.address = oracleAddress;
-						clReq.dataPrefix = web3.eth.abi.encodeParameters([
-								'bytes32', 'uint256', 'address', 'bytes4', 'uint256'
-							],[
-								logs.requestId, logs.payment, logs.callbackAddr, logs.callbackFunctionId, logs.cancelExpiration
-							]
-						);
-						// 0x4ab0d190 is the selector for the Oracle fulfillRequest() function
-						clReq.functionSelector = '0x4ab0d190';
-						// Load auth credentials from database
-						const auth = await loadCredentials();
-						// Trigger the job run, passing auth credentials and the complete request
-						const newRun = await chainlink.initiateJobRun(jobId, auth.incomingAccessKey, auth.incomingSecret, clReq);
-						if (!newRun.errors){
-							console.info(`Initiated job run with ID ${newRun.data.attributes.id}...`);
-						}else{
-							throw newRun.errors;
-						}
-						// Give it some time to wait for possible incoming repeated events, then remove it from array
-						setTimeout(() => {
-							Events.splice(0, 1);
-						}, 80000);
-					}else{
-						console.info('Detected duplicate event, skipping...');
-					}
-			}catch(e){
-				console.error(e);
+		fromBlock: web3.utils.toHex(currentBlock),
+		// Add the OracleRequest event signature and hex job Id to topics filter to get only the events for the specified job
+		topics: ['0xd8d7ecc4800d25fa53ce0372f13a416d98907a7ef3d8d3bdd79cf4fe75529c65', web3.utils.utf8ToHex(jobId)]
+	}).on('data', event => {
+		try {
+			console.info('Detected an Oracle Request event for job ' + jobId);
+			// If an array key is not present for this log Id, create one
+			if (typeof Events[event.id] == 'undefined'){
+				Events[event.id] = [];
 			}
+			// Set the removed flag to false for this new log Id
+			Events[event.id].removed == false;
+			// The timer variable to increment on every log check
+			let timer = 0;
+			// Check every 1 sec if there are changes in the log state
+			const checkLog = setInterval(() => {
+				timer++;
+				// If the log's new state is removed, discard it
+				if (Events[event.id].removed == true){
+					delete Events[event.id];
+					clearInterval(checkLog);
+				}
+				// If the log didn't change in 16 seconds, then trigger the job run
+				if (timer == 16){
+					delete Events[event.id];
+					clearInterval(checkLog);
+					triggerJobRun(event, jobId, oracleAddress);
+				}
+			}, 1000);
+		}catch(e){
+			console.error(e);
 		}
+	}).on('changed', event => {
+		setTimeout(() => {
+			if (typeof Events[event.id] !== 'undefined' && event.removed == true){
+				console.info(`Detected a log change for job ${jobId}, will discard old log`);
+				Events[event.id].removed = true;
+			}
+		}, 500);
+	}).on('error', error => {
+		console.error(error);
 	});
 }
 
@@ -312,6 +279,46 @@ function setupNetwork(node){
 	}).catch(e => {
 		reject(e);
 	});
+}
+
+/* Fires a job run on Chainlink Core passing the parameters received through the event logs */
+async function triggerJobRun(event, jobId, oracleAddress){
+	// Decode the event logs
+	const logs = web3.eth.abi.decodeLog(oracleRequestAbi, event.data, event.topics);
+	const specId = web3.utils.hexToUtf8(event.topics[1]);
+	console.info(`Processing Oracle Request ID ${logs.requestId}. Triggering a job run for ${specId}...`);
+	// If there's request data present in the logs, then extract and decode it
+	let clReq;
+	if (logs.data !== null){
+		// Extract the CBOR data buffer from the log, adding the required initial and final bytes for proper format
+		const encodedReq = new Buffer.from(('bf' + logs.data.slice(2) + 'ff'), 'hex');
+		// Decode the Chainlink request from the CBOR data buffer
+		clReq = await cbor.decodeFirst(encodedReq);
+	}else{
+		clReq = {};
+	}
+	/* Add to the request some custom parameters destined for the RSK TX adapter:
+	   @address is the address of the Oracle contract that the adapter has to call
+	   @dataPrefix is the encoded parameters that the adapter will need to call the Oracle
+	   @functionSelector is the selector of the Oracle fulfill function */
+	clReq.address = oracleAddress;
+	clReq.dataPrefix = web3.eth.abi.encodeParameters([
+			'bytes32', 'uint256', 'address', 'bytes4', 'uint256'
+		],[
+			logs.requestId, logs.payment, logs.callbackAddr, logs.callbackFunctionId, logs.cancelExpiration
+		]
+	);
+	// 0x4ab0d190 is the selector for the Oracle fulfillRequest() function
+	clReq.functionSelector = '0x4ab0d190';
+	// Load auth credentials from database
+	const auth = await loadCredentials();
+	// Trigger the job run, passing auth credentials and the complete request
+	const newRun = await chainlink.initiateJobRun(jobId, auth.incomingAccessKey, auth.incomingSecret, clReq);
+	if (!newRun.errors){
+		console.info(`Initiated job run with ID ${newRun.data.attributes.id}...`);
+	}else{
+		throw newRun.errors;
+	}
 }
 
 const server = app.listen(port, async function() {
