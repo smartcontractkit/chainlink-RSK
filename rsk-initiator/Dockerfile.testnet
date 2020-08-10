@@ -15,7 +15,5 @@ WORKDIR /home/rsk-initiator/src
 
 RUN npm install 2>&1
 
-COPY --chown=node:node . .
-
 ENTRYPOINT ["npm"]
 CMD ["start"]

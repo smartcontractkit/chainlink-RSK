@@ -1,12 +1,13 @@
 {
 	"name": "rsk-initiator",
-	"version": "0.0.5",
+	"version": "0.1.0",
 	"description": "External initiator for Chainlink that triggers a Job Run based on log events from an Oracle deployed in RSK network.",
 	"scripts": {
 		"start": "node index.js",
 		"dev": "npx nodemon --watch index.js --watch ../../chainlink-api-client/src/index.js index.js",
 		"setup": "node setup.js",
-		"remove": "node remove.js"
+		"remove": "node remove.js",
+		"delsubs": "node delsubs.js"
 	},
 	"dependencies": {
 		"body-parser": "^1.19.0",

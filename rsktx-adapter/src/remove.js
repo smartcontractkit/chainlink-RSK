@@ -19,15 +19,14 @@ async function runUninstall(){
 	await chainlink.login();
 	const result = await chainlink.deleteBridge(ADAPTER_NAME);
 	if (!result.errors){
-		if (typeof result.data !== 'undefined' && result.data == '204 No Content'){
+		if (typeof result.data !== 'undefined'){
 			console.log('[INFO] - RSK TX Adapter successfully removed from Chainlink node.');
-			await deleteCredentials();
 		}else{
 			console.log(result);
 		}
+		await deleteCredentials();
 	}else{
 		console.log(result.errors);
-		await deleteCredentials();
 	}
 	await chainlink.logout();
 	process.exit();

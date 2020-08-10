@@ -65,20 +65,24 @@ app.post("/initiator", async (req, res) => {
 			const outgoingSecret = req.headers['x-chainlink-ea-secret'];
 			console.info('Received a new job from Chainlink');
 
-			// TODO: Validate Chainlink auth credentials (outgoingAccessKey and outgoingSecret) and return 401 if not validated
+			const authenticated = await chainlinkAuth(outgoingAccessKey, outgoingSecret);
+			
+			if (!authenticated){
+				return res.sendStatus(401);
+			}else{
+				// Add the new job to the subscriptions list
+				console.info(`Adding Job ${req.body.jobId} to the subscription list...`);
+				Subscriptions.push({'jobId':req.body.jobId, 'address':req.body.params.address});
 
-			// Add the new job to the subscriptions list
-			console.info(`Adding Job ${req.body.jobId} to the subscription list...`);
-			Subscriptions.push({'jobId':req.body.jobId, 'address':req.body.params.address});
+				// Save the new subscription to database
+				console.info(`Saving subscription...`);
+				await saveSubscription(req.body.jobId, req.body.params.address);
 
-			// Save the new subscription to database
-			console.info(`Saving subscription...`);
-			await saveSubscription(req.body.jobId, req.body.params.address);
+				// Subscribe to RSK node for events from that Oracle corresponding to that new job id
+				newSubscription(req.body.jobId, req.body.params.address);
 
-			// Subscribe to RSK node for events from that Oracle corresponding to that new job id
-			newSubscription(req.body.jobId, req.body.params.address);
-
-			return res.sendStatus(200);
+				return res.sendStatus(200);
+			}		
 		}else{
 			return res.sendStatus(401);
 		}
@@ -88,6 +92,24 @@ app.post("/initiator", async (req, res) => {
 		return res.sendStatus(500);
 	}
 });
+
+/* Validates Chainlink auth credentials */
+async function chainlinkAuth(outgoingAccessKey, outgoingSecret){
+	return new Promise(async function (resolve, reject){
+		const result = await db.query('SELECT outgoing_token_hash, outgoing_secret_hash FROM auth_data');
+		if (result.rows.length > 0){
+			const outgoingAccessKeyHash = web3.utils.sha3(outgoingAccessKey).slice(2);
+			const outgoingSecretHash = web3.utils.sha3(outgoingSecret).slice(2);
+			if (outgoingAccessKeyHash == result.rows[0].outgoing_token_hash && outgoingSecretHash == result.rows[0].outgoing_secret_hash){
+				resolve(true);
+			}else{
+				resolve(false);
+			}
+		}else{
+			reject('Failed auth: no auth data present');
+		}
+	});
+}
 
 /* Configures the initiator with a web3 instance connected to a RSK network and tries to load the
    subscriptions file and configuration file. */
@@ -176,8 +198,8 @@ async function newSubscription(jobId, oracleAddress){
 					delete Events[event.id];
 					clearInterval(checkLog);
 				}
-				// If the log didn't change in 16 seconds, then trigger the job run
-				if (timer == 16){
+				// If the log didn't change in 20 seconds, then trigger the job run
+				if (timer == 20){
 					delete Events[event.id];
 					clearInterval(checkLog);
 					triggerJobRun(event, jobId, oracleAddress);

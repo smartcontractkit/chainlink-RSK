@@ -49,23 +49,31 @@ app.get("/", (req, res) => {
 
 // The main endpoint that receives Chainlink requests
 app.post("/adapter", async (req, res) => {
-	// TODO: Validate Chainlink auth token
-
 	// Checks if it is a valid request
 	if ((typeof req.body.id !== 'undefined') && (typeof req.body.data !== 'undefined')){
 		try {
-			const runId = req.body.id;
-			console.info(`Adapter received fulfillment request for run id ${runId}`);
-			// Process the request while sending pending status to Chainlink
-			processRequest(runId, req.body.data);
-			var rJson = JSON.stringify({
-				"jobRunID": runId,
-				"data": {},
-				"status": "pending",
-				"pending": true,
-				"error": null
-			});
-			return res.send(rJson);
+			if (typeof req.headers['authorization'] !== 'undefined'){
+				const outgoingToken = req.headers['authorization'].slice(7);
+				const authenticated = await chainlinkAuth(outgoingToken);
+				if (!authenticated){
+					return res.sendStatus(401);
+				}else{
+					const runId = req.body.id;
+					console.info(`Adapter received fulfillment request for run id ${runId}`);
+					// Process the request while sending pending status to Chainlink
+					processRequest(runId, req.body.data);
+					var rJson = JSON.stringify({
+						"jobRunID": runId,
+						"data": {},
+						"status": "pending",
+						"pending": true,
+						"error": null
+					});
+					return res.send(rJson);
+				}
+			}else{
+				return res.sendStatus(401);
+			}
 		}catch(e){
 			// On error, print it and report to Chainlink
 			console.error(e);
@@ -100,6 +108,23 @@ async function adapterSetup(){
 	}catch(e){
 		console.error('Adapter setup failed:' + e);
 	}
+}
+
+/* Validates Chainlink auth credentials */
+async function chainlinkAuth(outgoingToken){
+	return new Promise(async function (resolve, reject){
+		const result = await db.query('SELECT outgoing_token_hash FROM auth_data');
+		if (result.rows.length > 0){
+			const outgoingTokenHash = web3.utils.sha3(outgoingToken).slice(2);
+			if (outgoingTokenHash == result.rows[0].outgoing_token_hash){
+				resolve(true);
+			}else{
+				resolve(false);
+			}
+		}else{
+			reject('Failed auth: no auth data present');
+		}
+	});
 }
 
 /* Fulfills a Chainlink request sending the given data to the specified address.
