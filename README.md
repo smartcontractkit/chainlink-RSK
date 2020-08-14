@@ -84,6 +84,7 @@ Create an .env-testnet file for each service and set the configuration environme
 | `INITIATOR_HOST` | The hostname of the RSK Initiator | `localhost` |
 | `INITIATOR_NAME` | The Initiator name that will be registered on Chainlink Core | `rskinitiator` |
 | `INITIATOR_PORT` | The port where the Initiator service will be listening | `30055` |
+| `MIN_INCOMING_CONFIRMATIONS` | The number of blocks to wait before triggering a job run | `3` |
 | `RSK_HOST` | The hostname of the RSK Node RPC | `localhost` |
 | `RSK_WS_PROTOCOL` | The protocol that will be used to connect to the RSK Node RPC (ws or wss) | `ws` |
 | `RSK_WS_PORT` | The port to connect to the RSK Node RPC websocket | `4445` |
