@@ -13,7 +13,7 @@ const oracleRequestAbi = [{"indexed":true,"name":"specId","type":"bytes32"},{"in
 
 const app = express();
 const port = process.env.INITIATOR_PORT || 30055;
-const confirmations = process.env.MIN_INCOMING_CONFIRMATIONS || 3;
+const confirmations = process.env.MIN_INCOMING_CONFIRMATIONS || 2;
 
 let web3 = new Web3();
 // The Subscriptions array holds the current job/oracle pairs that needs to be watched for events
@@ -199,10 +199,10 @@ async function newSubscription(jobId, oracleAddress){
 					delete Events[event.id];
 					clearInterval(checkLog);
 				}
-				// The Initiator will wait MIN_INCOMING_CONFIRMATIONS blocks (20 secs per block, plus 2 more secs)
+				// The Initiator will wait MIN_INCOMING_CONFIRMATIONS blocks (30 secs per block, plus 2 more secs)
 				// If the log remains unchanged after that, then will trigger the job run and delete the log from memory
 				// If there is a chain reorg longer than that, the job run will be triggered again
-				if (timer == ((confirmations * 20) + 2)){
+				if (timer == ((confirmations * 30) + 2)){
 					delete Events[event.id];
 					clearInterval(checkLog);
 					triggerJobRun(event, jobId, oracleAddress);
