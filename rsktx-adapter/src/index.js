@@ -274,7 +274,6 @@ function setupNetwork(node){
 				reconnect: {
 					auto: true,
 					delay: 5000, // ms
-					maxAttempts: 5,
 					onTimeout: false
 				}
 			};
