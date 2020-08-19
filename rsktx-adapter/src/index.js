@@ -143,7 +143,7 @@ async function fulfillRequest(req){
 			// Concatenate the data
 			encodedFulfill += functionSelector + dataPrefix + req.result.slice(2);
 			const gasPrice = parseInt(await web3.eth.getGasPrice() * 1.3);
-			// TX params		
+			// TX params
 			const tx = {
 				gas: 500000,
 				gasPrice: gasPrice,
@@ -168,8 +168,19 @@ async function fulfillRequest(req){
 				}
 			}).on('transactionHash', async function(hash){
 				console.info(`Transaction ${hash} is in TX Pool`);
-			}).on('error', function(e){
-				reject(e);
+			}).on('error', async function(e){
+				// If the nonce counter is wrong, correct it and try again
+				if (e.toString().indexOf('nonce too high') > -1 || e.toString().indexOf('Transaction was not mined within') > -1 || e.toString().indexOf('nonce too low') > -1 ){
+					console.info('There was a nonce mismatch, will correct it and try again...');
+					currentNonce = await web3.eth.getTransactionCount(web3.defaultAccount, 'pending');
+					fulfillRequest(req).then(tx => {
+						resolve(tx);
+					}).catch(e => {
+						reject(e);
+					});
+				}else{
+					reject(e);
+				}
 			});
 		}catch(e){
 			reject(e);
