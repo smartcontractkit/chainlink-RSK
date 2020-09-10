@@ -148,6 +148,11 @@ npm install
 npx truffle migrate --f 1 --to 2 --network rskTestnet
 ```
 
+**SECURITY WARNING**: This example has been created just for testing the RSK Initiator and RSKTx Adapter using the RSK Testnet. It deploys a single sourced Oracle contract which does not use any of the Chainlink’s more advanced features such as: aggregation of data sources, slashing node deposits, etc. It's not recommended to run this setup on production in Mainnet. As a Node Operator, you should be familiar with the best practices:
+- [Best Security and Operating Practices](https://docs.chain.link/docs/best-security-practices)
+- [Setting-up failover redundant RSK node connections](https://github.com/Fiews/ChainlinkEthFailover)
+- [Enabling HTTPS connections](https://docs.chain.link/docs/enabling-https-connections)
+
 ### 8. Create a test job
 
 Now the only thing left to do is to test the request flow. First, login into the Chainlink Operator WebUI and create a new job that uses the RSK Initiator and the RSKTX Adapter. You'll need to replace RSK_INITIATOR_NAME, ORACLE_CONTRACT_ADDRESS and RSKTX_ADAPTER_NAME with your values.
@@ -195,6 +200,10 @@ Once the Oracle and Job are configured, the only missing piece is a client contr
 npx truffle migrate --f 3 --to 3 --network rskTestnet
 ```
 
+**SECURITY WARNING**: In production on Mainnet, deploying a single Consumer contract that uses only one Oracle is not recommended. To consume price data an Aggregator should be used instead. There are code examples in Chainlink docs for consuming Aggregators.
+- [Get the Latest Price](https://docs.chain.link/docs/get-the-latest-price)
+- [Aggregator Interface API Reference](https://docs.chain.link/docs/price-feeds-api-reference)
+
 ### 10. Fund the Consumer contract
 
 The Consumer contract will need rKovLINK to pay the Oracle. To get rKovLINK, first you'll need to get Kovan LINK and transfer them to the RSK Testnet through the RSK Token Bridge.
@@ -209,6 +218,13 @@ To trigger a job request, there's a Truffle script that can be run to quickly se
 ```bash
 npx truffle exec scripts/consumer-request.js --network rskTestnet
 ```
+## Price Feed Contracts ##
+
+### RSK Testnet
+
+| Pair | New Contract |
+|-----|-------------|
+| RIF/BTC |  [0xd793fd691df2934b412e250460bed76d807f05eb](https://explorer.testnet.rsk.co/address/0xd793fd691df2934b412e250460bed76d807f05eb) |
 
 ## Add your Chainlink node to the RIF/BTC Price Reference Aggregator running on RSK Testnet
 
