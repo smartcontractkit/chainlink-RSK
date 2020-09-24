@@ -40,11 +40,6 @@ Lifetime = 10800000000000
 Blocks = 20
 Percentile = 60
 
-[Shh]
-MaxMessageSize = 1048576
-MinimumAcceptedPOW = 2e-01
-RestrictConnectionBetweenLightClients = true
-
 [Node]
 NoUSB = true
 InsecureUnlockAllowed = true
