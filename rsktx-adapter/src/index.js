@@ -207,18 +207,17 @@ function setupNetwork(node){
 					onTimeout: false
 				}
 			};
-			const wsProvider = new Web3.providers.HttpProvider(process.env.RPC_URL);
+			const wsProvider = new Web3.providers.WebsocketProvider(node.url, wsOptions);
 			web3.setProvider(wsProvider);
-			resolve(web3);
 			// Check connection with isListening()
-			/*web3.eth.net.isListening().then(() => {
+			web3.eth.net.isListening().then(() => {
 				resolve(web3);
 			}).catch(e => {
 				// If error, print it and try to connect again after 10 seconds
 				console.error(`Could not connect to ${node.name} node, retrying in 10 seconds...`)
 				console.error(e);
 				setTimeout(tryConnect, 10000);
-			});*/
+			});
 		})();
 	}).catch(e => {
 		reject(e);
