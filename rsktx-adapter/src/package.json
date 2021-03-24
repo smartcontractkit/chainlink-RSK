@@ -4,15 +4,11 @@
 	"description": "External adapter for Chainlink that takes the input sent by Chainlink, and sends a transaction with that data to an address on a RSK network.",
 	"scripts": {
 		"start": "node index.js",
-		"dev": "npx nodemon --watch index.js --watch ../../chainlink-api-client/src/index.js index.js",
-		"setup": "node setup.js",
-		"remove": "node remove.js"
+		"dev": "npx nodemon --watch index.js --watch ../../chainlink-api-client/src/index.js index.js"
 	},
 	"dependencies": {
-		"chainlink-api-client": "file:../../chainlink-api-client",
 		"console-stamp": "^0.2.9",
 		"express": "^4.17.1",
-		"pg": "^8.3.0",
 		"rskjs-util": "^1.0.3",
 		"web3": "^1.2.7"
 	},

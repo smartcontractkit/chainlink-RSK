@@ -1,8 +1,5 @@
 const bodyParser = require('body-parser');
-const ChainlinkAPIClient = require('chainlink-api-client');
-const { exec } = require('child_process');
 const express = require('express');
-const db = require('./db.js');
 const fs = require('fs');
 const rskUtils = require('rskjs-util');
 const Web3 = require('web3');
@@ -29,11 +26,6 @@ const RSK_CONFIG = {
 	'url': `${RSK_NODE.protocol}://${RSK_NODE.host}:${RSK_NODE.port}${RSK_NODE.url}`
 };
 
-// Initialize the Chainlink API Client without credentials, the adapter will login using the token
-let chainlink = new ChainlinkAPIClient({
-	basePath: process.env.CHAINLINK_BASE_URL
-});
-
 app.use(bodyParser.json());
 
 // Simple logger middleware that prints the requests received on the adapter endpoints
@@ -52,28 +44,18 @@ app.post("/adapter", async (req, res) => {
 	// Checks if it is a valid request
 	if ((typeof req.body.id !== 'undefined') && (typeof req.body.data !== 'undefined')){
 		try {
-			if (typeof req.headers['authorization'] !== 'undefined'){
-				const outgoingToken = req.headers['authorization'].slice(7);
-				const authenticated = await chainlinkAuth(outgoingToken);
-				if (!authenticated){
-					return res.sendStatus(401);
-				}else{
-					const runId = req.body.id;
-					console.info(`Adapter received fulfillment request for run id ${runId}`);
-					// Process the request while sending pending status to Chainlink
-					processRequest(runId, req.body.data);
-					var rJson = JSON.stringify({
-						"jobRunID": runId,
-						"data": {},
-						"status": "pending",
-						"pending": true,
-						"error": null
-					});
-					return res.send(rJson);
-				}
-			}else{
-				return res.sendStatus(401);
-			}
+			const runId = req.body.id;
+			console.info(`Adapter received fulfillment request for run id ${runId}`);
+			// Process the request while sending pending status to Chainlink
+			processRequest(runId, req.body.data);
+			var rJson = JSON.stringify({
+				"jobRunID": runId,
+				"data": {},
+				"status": "pending",
+				"pending": true,
+				"error": null
+			});
+			return res.send(rJson);
 		}catch(e){
 			// On error, print it and report to Chainlink
 			console.error(e);
@@ -108,23 +90,6 @@ async function adapterSetup(){
 	}catch(e){
 		console.error('Adapter setup failed:' + e);
 	}
-}
-
-/* Validates Chainlink auth credentials */
-async function chainlinkAuth(outgoingToken){
-	return new Promise(async function (resolve, reject){
-		const result = await db.query('SELECT outgoing_token_hash FROM auth_data');
-		if (result.rows.length > 0){
-			const outgoingTokenHash = web3.utils.sha3(outgoingToken).slice(2);
-			if (outgoingTokenHash == result.rows[0].outgoing_token_hash){
-				resolve(true);
-			}else{
-				resolve(false);
-			}
-		}else{
-			reject('Failed auth: no auth data present');
-		}
-	});
 }
 
 /* Fulfills a Chainlink request sending the given data to the specified address.
@@ -188,21 +153,6 @@ async function fulfillRequest(req){
 	});
 }
 
-/* Reads the database and returns the Chainlink Node auth data */
-function loadCredentials(){
-	return new Promise(async function (resolve, reject){
-		const result = await db.query('SELECT * FROM auth_data');
-		if (result.rows.length > 0){
-			const auth = {
-				incomingToken: result.rows[0].incoming_token
-			};
-			resolve(auth);
-		}else{
-			reject('No auth data present');
-		}
-	});
-}
-
 /* Tries to fulfill a request and sends the TX hash to Chainlink */
 async function processRequest(runId, reqData){
 	const auth = await loadCredentials();
@@ -240,37 +190,6 @@ async function processRequest(runId, reqData){
 	});
 }
 
-/* Runs the setup script and checks if the Chainlink Node auth data is present */
-async function setupCredentials(){
-	return new Promise(async function(resolve, reject){
-		try {
-			if (process.env.DATABASE_URL) {
-				const proc = exec('npm run setup', async (error, stdout, stderr) => {
-					if (!error){
-						const result = await db.query('SELECT * FROM auth_data');
-						if (result.rows.length > 0){
-							resolve();
-						}else{
-							reject('No auth data present');
-						}
-					}else{
-						reject(error);
-					}
-				});
-				proc.stdout.on('data', function(data) {
-					process.stdout.write(data);
-				});
-			}else{
-				console.error('DATABASE_URL environment variable is not set. Exiting...');
-				reject();
-			}
-		}catch(e){
-			console.error(e);
-			reject(e);
-		}
-	});
-}
-
 /* Creates a new web3 instance connected to the specified network */
 function setupNetwork(node){
 	return new Promise(async function(resolve, reject){
@@ -288,30 +207,25 @@ function setupNetwork(node){
 					onTimeout: false
 				}
 			};
-			const wsProvider = new Web3.providers.WebsocketProvider(node.url, wsOptions);
+			const wsProvider = new Web3.providers.HttpProvider(process.env.RPC_URL);
 			web3.setProvider(wsProvider);
+			resolve(web3);
 			// Check connection with isListening()
-			web3.eth.net.isListening().then(() => {
+			/*web3.eth.net.isListening().then(() => {
 				resolve(web3);
 			}).catch(e => {
 				// If error, print it and try to connect again after 10 seconds
 				console.error(`Could not connect to ${node.name} node, retrying in 10 seconds...`)
 				console.error(e);
 				setTimeout(tryConnect, 10000);
-			});
+			});*/
 		})();
 	}).catch(e => {
 		reject(e);
 	});
 }
 
-const server = app.listen(port, async function() {
+app.listen(port, async function() {
 	console.info(`RSK TX Adapter listening on port ${port}!`);
-	try {
-		await setupCredentials();
-	}catch(e){
-		console.error(e);
-		process.exit();
-	}
 	adapterSetup();
 });
