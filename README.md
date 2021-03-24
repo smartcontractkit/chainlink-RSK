@@ -97,8 +97,6 @@ Create an .env-testnet file for each service and set the configuration environme
 | `ADAPTER_HOST` | The hostname of the RSKTX Adapter | `localhost` |
 | `ADAPTER_NAME` | The Adapter name that will be registered on Chainlink Core | `rsktxadapter` |
 | `ADAPTER_PORT` | The port where the Adapter service will be listening | `30056` |
-| `CHAINLINK_BASE_URL` | The URL of the Chainlink Core service with a trailing slash | `http://localhost:6688/` |
-| `DATABASE_URL` | The URL of the Postgres connection | `postgresql://user:passw@host:5432/dbname` |
 | `RSK_HOST` | The hostname of the RSK Node RPC | `localhost` |
 | `RSK_WS_PROTOCOL` | The protocol that will be used to connect to the RSK Node RPC (ws or wss) | `ws` |
 | `RSK_WS_PORT` | The port to connect to the RSK Node RPC websocket | `4445` |
